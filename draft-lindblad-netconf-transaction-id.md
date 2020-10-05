@@ -1,12 +1,12 @@
 ---
-title: "TODO - Your title"
-abbrev: "TODO - Abbreviation"
-docname: draft-todo-your-name-here
-category: info
+title: "NETCONF Transaction IDs"
+abbrev: "NCTID"
+docname: draft-lindblad-netconf-transaction-id-latest
+category: standards track
 
 ipr: trust200902
 area: General
-workgroup: TODO Working Group
+workgroup: NETCONF
 keyword: Internet-Draft
 
 stand_alone: yes
@@ -14,10 +14,10 @@ pi: [toc, sortrefs, symrefs]
 
 author:
  -
-    ins: H. Tschofenig
-    name: Hannes Tschofenig
-    organization: Arm Limited
-    email: hannes.tschofenig@arm.com
+    ins: J. Lindblad
+    name: Jan Lindblad
+    organization: Cisco Systems
+    email: jlindbla@cisco.com
 
 normative:
   RFC2119:
