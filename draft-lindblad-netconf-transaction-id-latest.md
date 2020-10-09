@@ -107,17 +107,118 @@ the server MUST return an entity-tag and timestamp when the element is
 retrieved using the get-config, edit-config or edit-data operations.  
 
 The element entity-tag and timestamp MUST be updated whenever the 
-container or list itself or any descendant configuration element is
-altered.  The entity-tag MUST NOT be updated due to changes in 
-non-configuration elements.
+container or list itself, or any descendant configuration element is
+altered, regardless of wheter such a change was initiated over
+NETCONF or other means.  The entity-tag MUST NOT be updated due to 
+changes in non-configuration elements.  
 
-## Entity-Tag Protocol Usage  (variant #1)
+## Entity-Tag Protocol Usage
 
 > Internal comment    
-  There are two different proposals here. We have to pick one.
+  There are two different proposals here, Attribute- and Leaf- based.
+  We have to pick one.
 
+### Attribute-based variant
 
+The entity-tags and timestamps are conveyed by the server to the client
+as XML attributes on container and list instances in the output. The 
+attributes' XML namespace MUST be the ietf-netconf-transaction-id 
+YANG module's namespace.
 
+A client might send the following get-config request:
+~~~
+<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+  <get-config>
+    <source>
+      <running/>
+    </source>
+    <filter>
+      <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"/>
+    </filter>
+  </get-config>
+</rpc>
+~~~
+
+To this, a server implementing ietf-netconf-transaction-id might 
+respond:
+~~~
+<rpc-reply message-id="1"
+           xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+  <data>
+    <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
+                ietf-netconf-transaction-id:entag="abc12345678"
+                ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
+      <interface ietf-netconf-transaction-id:entag="def88884321"
+                 ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
+        <name>GigabitEthernet-0/0/0</name>
+        <description>Management Interface</description>
+        <type>ianaift:ethernetCsmacd</type>
+        <enabled>true</enabled>
+      </interface>
+      <interface ietf-netconf-transaction-id:entag="ghi77775678"
+                 ietf-netconf-transaction-id:timestamp="2020-08-12T00:16:11Z">
+        <name>GigabitEthernet-0/0/1</name>
+        <description>Upward Interface</description>
+        <type>ianaift:ethernetCsmacd</type>
+        <enabled>true</enabled>
+      </interface>
+    </interfaces>
+  </data>
+</rpc>
+~~~
+
+The "entag" attribute values in the example above are meant to 
+represent hash values, computed over the configuration of each
+element and its descendants.
+
+### Leaf-based variant
+
+The entity-tags and timestamps are conveyed by the server to the client
+as XML tags in the rpc-reply.  The tags' XML namespace MUST be the 
+ietf-netconf-transaction-id YANG module's namespace.
+
+A client might send the following get-config request:
+~~~
+<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+  <get-config>
+    <source>
+      <running/>
+    </source>
+    <filter>
+      <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"/>
+    </filter>
+  </get-config>
+</rpc>
+~~~
+
+To this, a server implementing ietf-netconf-transaction-id might 
+respond:
+~~~
+<rpc-reply message-id="1"
+           xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+  <ietf-netconf-transaction-id:entag="abc12345678"/>
+  <ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z"/>
+  <data>
+    <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
+      <interface>
+        <name>GigabitEthernet-0/0/0</name>
+        <description>Management Interface</description>
+        <type>ianaift:ethernetCsmacd</type>
+        <enabled>true</enabled>
+      </interface>
+      <interface>
+        <name>GigabitEthernet-0/0/1</name>
+        <description>Upward Interface</description>
+        <type>ianaift:ethernetCsmacd</type>
+        <enabled>true</enabled>
+      </interface>
+    </interfaces>
+  </data>
+</rpc>
+~~~
+
+The "entag" tag values in the example above are meant to represent 
+hash values, computed over the configuration subtree.
 
 # Conditional Transactions
 
@@ -142,6 +243,9 @@ fields.
    entity-tag for a configuration data resource MUST represent the
    instance within the "running" datastore.
 
+
+
+# Get-config with Maximum Depth
 
 
 
