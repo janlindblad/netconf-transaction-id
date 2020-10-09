@@ -47,7 +47,7 @@ approach is not popular with most NETCONF users, however, since it
 would often be very expensive in terms of communications and 
 computation cost.
 
-> Internal comment    
+> Comment, to be removed    
   Evidence of this feature being demanded by clients is that numerous 
   server implementors have built proprietary and mutually incompatible 
   mechanisms for obtaining a transaction id from a NETCONF server.
@@ -63,6 +63,11 @@ RFC 7232 [RFC7232](https://tools.ietf.org/html/rfc7232)
 This document defines similar functionality for NETCONF, 
 RFC 6241 [RFC6241](https://tools.ietf.org/html/rfc6241).
 
+> Comment, to be removed    
+  The intent behind this specification is to stay close to the 
+  RESTCONF E-Tags mechanism so that existiner server functionality
+  should be possible to reuse for NETCONF to a very high degree.
+
 # Conventions and Definitions
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
@@ -70,10 +75,29 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
 document are to be interpreted as described in BCP 14 {{RFC2119}} {{!RFC8174}}
 when, and only when, they appear in all capitals, as shown here.
 
-# Configuration Tagging
+# Configuration Entity and Timestamp Tagging
 
-> Internal comment    
-  This is based on RFC 8040. Is there a way to avoid duplication?
+When a NETCONF client retrieves the configuration from a NETCONF 
+server that implement this specification, it may request that the
+configuration is entity or timestamp tagged.  The entity and
+timestamp tags are XML attributes added to the retrieved configuration
+elements by the server.
+
+The entity and timestamp attributes are guaranteed to change every
+time there has been a configuration change at or below the element
+bearing the attribute.
+
+Clients request entity and timestamp tags to be added by setting an
+attribute on the configuration retrieval request to the value "true".  
+To retrieve both etag and timestamp tags, a client might send:
+
+~~~
+<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+  <get-config xmlns:ietf-netconf-transaction-id="..."
+              ietf-netconf-transaction-id:entag="true"
+              ietf-netconf-transaction-id:timestamp="true">
+...
+~~~
 
 ## Entity-Tags Encoding
 
@@ -98,13 +122,13 @@ accurate.
 
 The server SHOULD maintain an entity-tag and timestamp for each YANG 
 container and list that represents configuration, but servers are 
-allowed to not implement the entity-tags and timestamps for all 
+allowed to not implement entity-tags and timestamps for some 
 such containers and lists.  Entity-tags and timestamps as defined 
 in this document MUST NOT be present on non-configuration elements.
 
 For YANG elements where an entity-tag and timestamp is maintained, 
 the server MUST return an entity-tag and timestamp when the element is
-retrieved using the get-config, edit-config or edit-data operations.  
+retrieved using the get-config or get-data operations.  
 
 The element entity-tag and timestamp MUST be updated whenever the 
 container or list itself, or any descendant configuration element is
@@ -114,21 +138,18 @@ changes in non-configuration elements.
 
 ## Entity-Tag Protocol Usage
 
-> Internal comment    
-  There are two different proposals here, Attribute- and Leaf- based.
-  We have to pick one.
-
-### Attribute-based variant
-
 The entity-tags and timestamps are conveyed by the server to the client
 as XML attributes on container and list instances in the output. The 
 attributes' XML namespace MUST be the ietf-netconf-transaction-id 
 YANG module's namespace.
 
 A client might send the following get-config request:
+
 ~~~
 <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-  <get-config>
+  <get-config xmlns:ietf-netconf-transaction-id="..."
+              ietf-netconf-transaction-id:entag="true"
+              ietf-netconf-transaction-id:timestamp="true">
     <source>
       <running/>
     </source>
@@ -141,6 +162,196 @@ A client might send the following get-config request:
 
 To this, a server implementing ietf-netconf-transaction-id might 
 respond:
+
+~~~
+<rpc-reply message-id="1"
+           xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+  <data>
+    <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
+                xmlns:ietf-netconf-transaction-id="..."
+                ietf-netconf-transaction-id:entag="abc12345678"
+                ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
+      <interface ietf-netconf-transaction-id:entag="def88884321"
+                 ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
+        <name>GigabitEthernet-0/0/0</name>
+        <description>Management Interface</description>
+        <type>ianaift:ethernetCsmacd</type>
+        <enabled>true</enabled>
+      </interface>
+      <interface ietf-netconf-transaction-id:entag="ghi77775678"
+                 ietf-netconf-transaction-id:timestamp="2020-08-12T00:16:11Z">
+        <name>GigabitEthernet-0/0/1</name>
+        <description>Upward Interface</description>
+        <type>ianaift:ethernetCsmacd</type>
+        <enabled>true</enabled>
+      </interface>
+    </interfaces>
+  </data>
+</rpc>
+~~~
+
+The "entag" attribute values in the example above are meant to 
+represent hash values, computed over the configuration of each
+element and its descendants.
+
+# Conditional Transactions
+
+Conditional Transactions are useful when a client is interested to
+make a configuration change, being sure that the server configuration
+has not changed since the client last inspected it.
+
+Even if a client is constantly connected to a device, and even possibly
+receiving notification when a server device's configuration changes,
+there is always a possibility that a change is introduced by another
+party in the time window between when the client last received an 
+update about the server's configuration until the server executes a 
+configuration change request.
+
+By introducing conditional transactions, this race condition can be 
+eliminated efficiently.  If the client provides the transaction-id
+it expects the device to have as part of it's configuration change 
+request, and the device guarantees to only execute the request in case 
+the transaction-id in the request matches that on the server, the race 
+condition is removed.
+
+## Behavior
+
+In case any of the entag values provided by the client do not 
+match the value on the server, the entire transaction MUST be rejected.
+
+In case any of the timestamp values provided by the client are older 
+(reference an prior point in time) than the value on the server, the
+entire transaction MUST be rejected.
+
+When a transaction is rejected due to an entag or timestamp value
+mismatch, the server must return an rpc-error with 
+error-tag data-missing, error-type protocol, 
+error-severity error and error-info containing a current-value tag with 
+current value of the property that failed the precondition.
+
+> Comment, to be removed    
+  Say something about timestamp of transactions that do not really
+  make a change (timestamp may or may not change?)
+
+## Updates
+
+When a transaction
+
+
+## Conditional Transactions Protocol Usage
+
+> Comment, to be removed    
+  There are two different proposals here, Attribute- and Leaf- based.
+  We have to pick one.
+
+### Attribute-based variant
+
+The entity-tags and timestamps are conveyed by the server to the client
+as XML attributes on container and list instances in the output. The 
+attributes' XML namespace MUST be the ietf-netconf-transaction-id 
+YANG module's namespace.
+
+A client might send the following edit-config request, if the intent 
+is to ensure there have been no changes to any interfaces on the 
+server since the client last synchronized before making the requested
+change.
+
+~~~
+<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+  <edit-config xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0">
+    <target>
+      <candidate/>
+    </target>
+    <test-option>test-then-set</test-option>
+    <config>
+      <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
+                  ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
+        <interface ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
+          <name>GigabitEthernet-0/0/1</name>
+          <description>Downward Interface</description>
+        </interface>
+      </interfaces>
+    </config>
+  </edit-config>
+</rpc>
+~~~
+
+If the timestamps sent by the client match the entags in the server, it 
+might respond:
+
+~~~
+<rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" 
+           message-id="1">
+  <ietf-netconf-transaction-id:updates>
+    <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
+                ietf-netconf-transaction-id:entag="xyz555443322"
+                ietf-netconf-transaction-id:timestamp="2020-10-05T08:16:47Z">
+      <interface ietf-netconf-transaction-id:entag="zzz32132199"
+                 ietf-netconf-transaction-id:timestamp="2020-10-05T08:16:47Z">
+        <name>GigabitEthernet-0/0/1</name>
+      </interface>
+    </interfaces>
+  </ietf-netconf-transaction-id:updates>
+  <ok/>
+</rpc-reply>
+~~~
+
+If instead one or more of the entags sent by the client do not match 
+the entags on the server, it might respond:
+
+~~~
+<rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" 
+           message-id="1">
+  <rpc-error>
+    <error-type>protocol</error-type>
+    <error-tag>data-missing</error-tag>
+    <error-severity>error</error-severity>
+    <error-info>
+      <current-value 
+        xmlns:ietf-netconf-transaction-id=
+        "urn:ietf:params:xml:ns:netconf:transaction-id:1.0">
+        yzx76576511
+      </current-value>
+    </error-info>
+  </rpc-error>
+</rpc-reply>
+~~~
+
+In case the client intended to go through with the transaction 
+regardless of any changes to other interface instances, but ensure
+no changes have been made in the target interface, it could
+send a request without any entag attribute provided for the 
+interfaces container.
+
+In this case, the transaction is only aborted in  case there have
+been any changes to to GigabitEthernet-0/0/1 interface instance:
+
+~~~
+<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+  <edit-config xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0">
+    <target>
+      <candidate/>
+    </target>
+    <test-option>test-then-set</test-option>
+    <config>
+      <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+        <interface ietf-netconf-transaction-id:entag="def88884321">
+          <name>GigabitEthernet-0/0/1</name>
+          <description>Downward Interface</description>
+        </interface>
+      </interfaces>
+    </config>
+  </edit-config>
+</rpc>
+~~~
+
+
+
+
+
+To this, a server implementing ietf-netconf-transaction-id might 
+respond:
+
 ~~~
 <rpc-reply message-id="1"
            xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
@@ -171,152 +382,16 @@ The "entag" attribute values in the example above are meant to
 represent hash values, computed over the configuration of each
 element and its descendants.
 
-### Leaf-based variant
-
-The entity-tags and timestamps are conveyed by the server to the client
-as XML tags in the rpc-reply.  The tags' XML namespace MUST be the 
-ietf-netconf-transaction-id YANG module's namespace.
-
-A client might send the following get-config request:
-~~~
-<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-  <get-config>
-    <source>
-      <running/>
-    </source>
-    <filter>
-      <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"/>
-    </filter>
-  </get-config>
-</rpc>
-~~~
-
-To this, a server implementing ietf-netconf-transaction-id might 
-respond:
-~~~
-<rpc-reply message-id="1"
-           xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
-  <ietf-netconf-transaction-id:entag="abc12345678"/>
-  <ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z"/>
-  <data>
-    <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-      <interface>
-        <name>GigabitEthernet-0/0/0</name>
-        <description>Management Interface</description>
-        <type>ianaift:ethernetCsmacd</type>
-        <enabled>true</enabled>
-      </interface>
-      <interface>
-        <name>GigabitEthernet-0/0/1</name>
-        <description>Upward Interface</description>
-        <type>ianaift:ethernetCsmacd</type>
-        <enabled>true</enabled>
-      </interface>
-    </interfaces>
-  </data>
-</rpc>
-~~~
-
-The "entag" tag values in the example above are meant to represent 
-hash values, computed over the configuration subtree.
-
-# Conditional Transactions
-
-The "ETag" header field can be used by a RESTCONF client in
-subsequent requests, within the "If-Match" and "If-None-Match" header
-fields.
-
-
-> Internal comment        
-                        Currently we have two different approaches to solving
-                        this.  We have to pick one.
-                        This is the "attribute-based approach"
 
 
 
 
 
 
-   This entity-tag is only affected by configuration data resources and
-   MUST NOT be updated for changes to non-configuration data.  If the
-   RESTCONF server is co-located with a NETCONF server, then the
-   entity-tag for a configuration data resource MUST represent the
-   instance within the "running" datastore.
+# Configuration Retrieval with Maximum Depth
 
 
 
-# Get-config with Maximum Depth
-
-
-
-
-
-3.4.1.2.  Entity-Tag
-
-   The server MUST maintain a unique opaque entity-tag for the datastore
-   resource and MUST return it in the "ETag" (Section 2.3 of 
-   [RFC7232](https://tools.ietf.org/html/rfc7232))
-   header in the response for a retrieval request.  The client MAY use
-   an "If-Match" header in edit operation requests to cause the server
-   to reject the request if the resource entity-tag does not match the
-   specified value.
-
-   The server MUST maintain an entity-tag for the top-level
-   {+restconf}/data resource.  This entity-tag is only affected by
-   configuration data resources and MUST NOT be updated for changes to
-   non-configuration data.  Entity-tags for data resources are discussed
-   in Section 3.5.  Note that each representation (e.g., XML vs. JSON)
-   requires a different entity-tag.
-
-   If the RESTCONF server is co-located with a NETCONF server, then this
-   entity-tag MUST be for the "running" datastore.  Note that it is
-   possible that other protocols can cause the entity-tag to be updated.
-   Such mechanisms are out of scope for this document.
-
-3.4.1.3.  Update Procedure
-
-   Changes to configuration data resources affect the timestamp and
-   entity-tag for that resource, any ancestor data resources, and the
-   datastore resource.
-
-   For example, an edit to disable an interface might be done by setting
-   the leaf "/interfaces/interface/enabled" to "false".  The "enabled"
-   data node and its ancestors (one "interface" list instance, and the
-   "interfaces" container) are considered to be changed.  The datastore
-   is considered to be changed when any top-level configuration data
-   node is changed (e.g., "interfaces").
-
-
-
-
-   The "Last-Modified" header field can be used by a RESTCONF client in
-   subsequent requests, within the "If-Modified-Since" and
-   "If-Unmodified-Since" header fields.
-
-   If maintained, the resource timestamp MUST be set to the current time
-   whenever the resource or any configuration resource within the
-   resource is altered.  If not maintained, then the resource timestamp
-   for the datastore MUST be used instead.  If the RESTCONF server is
-   co-located with a NETCONF server, then the last-modified timestamp
-   for a configuration data resource MUST represent the instance within
-   the "running" datastore.
-
-   This timestamp is only affected by configuration data resources and
-   MUST NOT be updated for changes to non-configuration data.
-
-3.5.2.  Entity-Tag
-
-   For configuration data resources, the server SHOULD maintain a
-   resource entity-tag for each resource and return the "ETag" header
-   field when it is retrieved as the target resource with the GET or
-   HEAD methods.  If maintained, the resource entity-tag MUST be updated
-   whenever the resource or any configuration resource within the
-   resource is altered.  If not maintained, then the resource entity-tag
-   for the datastore MUST be used instead.
-
-   The "ETag" header field can be used by a RESTCONF client in
-   subsequent requests, within the "If-Match" and "If-None-Match" header
-   fields.
 
 
 
