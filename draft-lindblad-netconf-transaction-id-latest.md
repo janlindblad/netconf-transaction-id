@@ -83,7 +83,7 @@ configuration is entity or timestamp tagged.  The entity and
 timestamp tags are XML attributes added to the retrieved configuration
 elements by the server.
 
-The entity and timestamp attributes are guaranteed to change every
+The entity-tag (entag) and timestamp attributes are guaranteed to change every
 time there has been a configuration change at or below the element
 bearing the attribute.
 
@@ -93,7 +93,8 @@ To retrieve both etag and timestamp tags, a client might send:
 
 ~~~
 <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-  <get-config xmlns:ietf-netconf-transaction-id="..."
+  <get-config xmlns:ietf-netconf-transaction-id=
+                "FIXME"
               ietf-netconf-transaction-id:entag="true"
               ietf-netconf-transaction-id:timestamp="true">
 ...
@@ -101,8 +102,9 @@ To retrieve both etag and timestamp tags, a client might send:
 
 ## Entity-Tags Encoding
 
-Entity-tags are opaque base64 encoded strings that represent a 
-particular configuration state for a configuration datastore subtree.  
+Entity-tags are opaque base64 encoded strings 
+RFC 4648 [RFC4648](https://tools.ietf.org/html/rfc4648) that represent 
+a particular configuration state for a configuration datastore subtree.  
 Servers SHOULD ensure that the probability for two different 
 configurations having the same Entity-tag value is extremely small.
 
@@ -139,15 +141,17 @@ changes in non-configuration elements.
 ## Entity-Tag Protocol Usage
 
 The entity-tags and timestamps are conveyed by the server to the client
-as XML attributes on container and list instances in the output. The 
-attributes' XML namespace MUST be the ietf-netconf-transaction-id 
-YANG module's namespace.
+as XML attributes on container and list instances in the output.  For
+get-config, the attributes' XML namespace MUST be the 
+ietf-netconf-transaction-id YANG module's namespace.  For get-data, 
+the attributes' namespace MUST be ietf-netconf-nmda-transaction-id.
 
 A client might send the following get-config request:
 
 ~~~
 <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-  <get-config xmlns:ietf-netconf-transaction-id="..."
+  <get-config xmlns:ietf-netconf-transaction-id=
+                "FIXME"
               ietf-netconf-transaction-id:entag="true"
               ietf-netconf-transaction-id:timestamp="true">
     <source>
@@ -168,18 +172,22 @@ respond:
            xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
   <data>
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-                xmlns:ietf-netconf-transaction-id="..."
+                xmlns:ietf-netconf-transaction-id=
+                  "FIXME"
                 ietf-netconf-transaction-id:entag="abc12345678"
-                ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
+                ietf-netconf-transaction-id:timestamp=
+                  "2020-10-01T12:33:50Z">
       <interface ietf-netconf-transaction-id:entag="def88884321"
-                 ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
+                 ietf-netconf-transaction-id:timestamp=
+                   "2020-10-01T12:33:50Z">
         <name>GigabitEthernet-0/0/0</name>
         <description>Management Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
       </interface>
       <interface ietf-netconf-transaction-id:entag="ghi77775678"
-                 ietf-netconf-transaction-id:timestamp="2020-08-12T00:16:11Z">
+                 ietf-netconf-transaction-id:timestamp=
+                   "2020-08-12T00:16:11Z">
         <name>GigabitEthernet-0/0/1</name>
         <description>Upward Interface</description>
         <type>ianaift:ethernetCsmacd</type>
@@ -190,7 +198,7 @@ respond:
 </rpc>
 ~~~
 
-The "entag" attribute values in the example above are meant to 
+The entity-tag ("entag") attribute values in the example above are meant to 
 represent hash values, computed over the configuration of each
 element and its descendants.
 
@@ -200,14 +208,19 @@ Conditional Transactions are useful when a client is interested to
 make a configuration change, being sure that the server configuration
 has not changed since the client last inspected it.
 
+By supplying the latest entity-tag or timestamp values known to the client
+in its change requests (edit-config etc.), it can request the server 
+to reject the transaction in case any changes have occurred at the 
+server that the client is not yet aware of.
+
 Even if a client is constantly connected to a device, and even possibly
-receiving notification when a server device's configuration changes,
+receiving notifications when a server device's configuration changes,
 there is always a possibility that a change is introduced by another
 party in the time window between when the client last received an 
 update about the server's configuration until the server executes a 
 configuration change request.
 
-By introducing conditional transactions, this race condition can be 
+By leveraging conditional transactions, this race condition can be 
 eliminated efficiently.  If the client provides the transaction-id
 it expects the device to have as part of it's configuration change 
 request, and the device guarantees to only execute the request in case 
@@ -216,40 +229,32 @@ condition is removed.
 
 ## Behavior
 
-In case any of the entag values provided by the client do not 
+In case any of the entity-tag values provided by the client do not 
 match the value on the server, the entire transaction MUST be rejected.
 
 In case any of the timestamp values provided by the client are older 
-(reference an prior point in time) than the value on the server, the
+(refer to a prior point in time) than the value on the server, the
 entire transaction MUST be rejected.
 
-When a transaction is rejected due to an entag or timestamp value
+When a transaction is rejected due to an entity-tag or timestamp value
 mismatch, the server must return an rpc-error with 
 error-tag data-missing, error-type protocol, 
-error-severity error and error-info containing a current-value tag with 
-current value of the property that failed the precondition.
+error-severity error and an error-info element containing a 
+current-value tag with current value of the property that failed the 
+precondition.
 
 > Comment, to be removed    
   Say something about timestamp of transactions that do not really
   make a change (timestamp may or may not change?)
 
-## Updates
-
-When a transaction
-
-
 ## Conditional Transactions Protocol Usage
 
-> Comment, to be removed    
-  There are two different proposals here, Attribute- and Leaf- based.
-  We have to pick one.
-
-### Attribute-based variant
-
 The entity-tags and timestamps are conveyed by the server to the client
-as XML attributes on container and list instances in the output. The 
-attributes' XML namespace MUST be the ietf-netconf-transaction-id 
-YANG module's namespace.
+as XML attributes on container and list instances in the output. For
+edit-config the attributes' XML namespace MUST be the 
+ietf-netconf-transaction-id YANG module's namespace. For edit-data the
+attributes' XML namespace MUST be the ietf-netconf-nmda-transaction-id
+namespace.
 
 A client might send the following edit-config request, if the intent 
 is to ensure there have been no changes to any interfaces on the 
@@ -258,15 +263,21 @@ change.
 
 ~~~
 <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-  <edit-config xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0">
+  <edit-config xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
+               xmlns:ietf-netconf-transaction-id=
+                 "FIXME"
+               ietf-netconf-transaction-id:entag="true"
+               ietf-netconf-transaction-id:timestamp="true">
     <target>
       <candidate/>
     </target>
     <test-option>test-then-set</test-option>
     <config>
       <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-                  ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
-        <interface ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
+                  ietf-netconf-transaction-id:timestamp=
+                    "2020-10-01T12:33:50Z">
+        <interface ietf-netconf-transaction-id:timestamp=
+                     "2020-10-01T12:33:50Z">
           <name>GigabitEthernet-0/0/1</name>
           <description>Downward Interface</description>
         </interface>
@@ -276,8 +287,11 @@ change.
 </rpc>
 ~~~
 
-If the timestamps sent by the client match the entags in the server, it 
-might respond:
+If the timestamps sent by the client are not older than the ones on 
+the server, the transaction goes through, and the server might respond
+as follows. The updates tag lists all containers and lists (including
+list keys and nothing else) that have an updated entity-tag or 
+timestamp value.
 
 ~~~
 <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" 
@@ -285,9 +299,11 @@ might respond:
   <ietf-netconf-transaction-id:updates>
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
                 ietf-netconf-transaction-id:entag="xyz555443322"
-                ietf-netconf-transaction-id:timestamp="2020-10-05T08:16:47Z">
+                ietf-netconf-transaction-id:timestamp=
+                  "2020-10-05T08:16:47Z">
       <interface ietf-netconf-transaction-id:entag="zzz32132199"
-                 ietf-netconf-transaction-id:timestamp="2020-10-05T08:16:47Z">
+                 ietf-netconf-transaction-id:timestamp=
+                   "2020-10-05T08:16:47Z">
         <name>GigabitEthernet-0/0/1</name>
       </interface>
     </interfaces>
@@ -296,8 +312,9 @@ might respond:
 </rpc-reply>
 ~~~
 
-If instead one or more of the entags sent by the client do not match 
-the entags on the server, it might respond:
+If instead one or more of the entity-tags sent by the client do not match 
+the entity-tags on the server, or one or more of the timestamps sent by
+the client is older than on the server, the server might respond:
 
 ~~~
 <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" 
@@ -310,7 +327,7 @@ the entags on the server, it might respond:
       <current-value 
         xmlns:ietf-netconf-transaction-id=
         "urn:ietf:params:xml:ns:netconf:transaction-id:1.0">
-        yzx76576511
+        yzx76576511 FIXME
       </current-value>
     </error-info>
   </rpc-error>
@@ -319,23 +336,28 @@ the entags on the server, it might respond:
 
 In case the client intended to go through with the transaction 
 regardless of any changes to other interface instances, but ensure
-no changes have been made in the target interface, it could
-send a request without any entag attribute provided for the 
+no changes have been made specifically to the target interface, it could
+send a request without any entity-tag or timestamp attribute provided for the 
 interfaces container.
 
-In this case, the transaction is only aborted in  case there have
-been any changes to to GigabitEthernet-0/0/1 interface instance:
+In this case, the transaction is only aborted in case there have
+been any changes to to GigabitEthernet-0/0/1 interface instance.
 
 ~~~
 <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
-  <edit-config xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0">
+  <edit-config xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
+               xmlns:ietf-netconf-transaction-id=
+                 "FIXME"
+               ietf-netconf-transaction-id:entag="true">
     <target>
       <candidate/>
     </target>
     <test-option>test-then-set</test-option>
     <config>
       <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
-        <interface ietf-netconf-transaction-id:entag="def88884321">
+        <interface xmlns:ietf-netconf-transaction-id=
+                     "FIXME"
+                   ietf-netconf-transaction-id:entag="def88884321">
           <name>GigabitEthernet-0/0/1</name>
           <description>Downward Interface</description>
         </interface>
@@ -345,90 +367,99 @@ been any changes to to GigabitEthernet-0/0/1 interface instance:
 </rpc>
 ~~~
 
-
-
-
-
 To this, a server implementing ietf-netconf-transaction-id might 
 respond:
+
+~~~
+<rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" 
+           message-id="1">
+  <ietf-netconf-transaction-id:updates>
+    <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
+                ietf-netconf-transaction-id:entag="ffx99991248">
+      <interface ietf-netconf-transaction-id:entag="123ghi32199">
+        <name>GigabitEthernet-0/0/1</name>
+      </interface>
+    </interfaces>
+  </ietf-netconf-transaction-id:updates>
+  <ok/>
+</rpc-reply>
+~~~
+
+# Configuration Retrieval with Maximum Depth
+
+In order for a client to quickly synchronize its view of a NETCONF 
+server's configuration, it is useful to retrieve the configuration 
+only to a certain depth in the YANG tree.  In combination with entity
+and timestamp tagging, the client can quickly ascertain which areas
+of the configuration has not moved.
+
+## Behavior
+
+When the client retrieves the configuration from the server, it MAY
+request that the configuration is only returned up to a specified
+"depth".  Data nodes with a "depth" value greater than the "depth" 
+parameter are not returned in a response to get-config or get-data.
+
+The requested data node has a depth level of "1".  Any other child 
+node has a "depth" value that is 1 greater than its parent.
+
+The value of the "depth" parameter is either an integer between 1 and
+65535 or the string "unbounded".  "unbounded" is the default.
+
+## Max Depth Protocol Usage
+
+A client requests that a max depth is applied to a get-config request
+by adding a depth tag to the query. The depth tag MUST be in the
+ietf-netconf-transaction-id namespace. For a get-data request, the
+depth tag MUST be in the ietf-netconf-nmda-transaction-id namespace.
+
+A client wishing to retrieve ietf-interfaces configuration up to 
+depth 2 might issue a request as follows.
+
+~~~
+<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1">
+  <get-config xmlns:ietf-netconf-transaction-id=
+                "FIXME"
+              ietf-netconf-transaction-id:entag="true">
+    <source>
+      <running/>
+    </source>
+    <depth xmlns="FIXME">2</depth>
+    <filter>
+      <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"/>
+    </filter>
+  </get-config>
+</rpc>
+~~~
+
+To this, the server might respond:
 
 ~~~
 <rpc-reply message-id="1"
            xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
   <data>
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-                ietf-netconf-transaction-id:entag="abc12345678"
-                ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
-      <interface ietf-netconf-transaction-id:entag="def88884321"
-                 ietf-netconf-transaction-id:timestamp="2020-10-01T12:33:50Z">
-        <name>GigabitEthernet-0/0/0</name>
-        <description>Management Interface</description>
-        <type>ianaift:ethernetCsmacd</type>
-        <enabled>true</enabled>
-      </interface>
-      <interface ietf-netconf-transaction-id:entag="ghi77775678"
-                 ietf-netconf-transaction-id:timestamp="2020-08-12T00:16:11Z">
-        <name>GigabitEthernet-0/0/1</name>
-        <description>Upward Interface</description>
-        <type>ianaift:ethernetCsmacd</type>
-        <enabled>true</enabled>
-      </interface>
+                xmlns:ietf-netconf-transaction-id=
+                  "FIXME"
+                ietf-netconf-transaction-id:entag="abc12345678">
+      <interface ietf-netconf-transaction-id:entag="def88884321"/>
+      <interface ietf-netconf-transaction-id:entag="ghi77775678"/>
     </interfaces>
   </data>
 </rpc>
 ~~~
 
-The "entag" attribute values in the example above are meant to 
-represent hash values, computed over the configuration of each
-element and its descendants.
-
-
-
-
-
-
-
-# Configuration Retrieval with Maximum Depth
-
-
-
-
-
-
-
-
-
-
-+ get last-transaction-id from somewhere Last-Modified ETag
-+ return at edit-config time in rpc-reply
-+ edit-config parameter If-Unmodified-Since, If-Modified-Since if-match
-
-
-Appendix A.  NETCONF Error List
-
-~~~
-protocol : data-missing
-
-   error-tag:      data-missing
-   error-type:     application
-   error-severity: error
-   error-info:     none
-   Description:    Request could not be completed because the relevant
-                   data model content does not exist.  For example,
-                   a "delete" operation was attempted on
-                   data that does not exist.
-
-   error-tag:      data-missing
-   error-type:     protocol
-   error-severity: error
-   error-info:     current-value : current value of the property that 
-                                   failed the precondition
-   Description:    Request could not be completed because the precondition
-                   specified in the request was not met.
-~~~
+> Comment, to be removed    
+  The interfaces above have no keys. Is this workable?
+  If not, how should we do this?
 
 # YANG Modules
 
+This module defines the depth tag in the edit-config input and 
+the update list in its output.
+
+> Comment, to be removed    
+  This is YANG 1.0. Do we want 1.1?
 
 ~~~ yang
 module ietf-netconf-transaction-id {
@@ -476,76 +507,32 @@ module ietf-netconf-transaction-id {
     prefix yang;
   }
 
-  // FIXME: Only relevant for the "leaf-based approach"
-  grouping netconf-transaction-id-groping {
-    leaf entag {  
-      type entag-type;
-    }
-    leaf timestamp {  
-      type yang:date-time;
-    }
-  }
-
-  container netconf-transaction-id {
-    uses netconf-transaction-id-groping;
-  }
-
-  typedef wildcard-type {
-    // FIXME: Do we need this?
-    type string {
-      length 1;
-      pattern '*';
-    }
-  }
-  typedef entag-type {
-    description "Base64 encoded tag value"
-    type string {
-      pattern '[A-Za-z0-9+/]+';
-    }
-  }
-  typedef entag-or-wildcard-type {
+  typedef depth-type {
     type union {
-      type wildcard-type;
-      type entag-type;
-    }
-  }
-
-  augment /nc:edit-config/nc:input {
-    container precondition {
-      choice precondition {
-        default none;
-        leaf none {
-          type empty;
-        }
-        leaf-list if-match-entag {
-          type entag-or-wildcard-type;
-        }
-        leaf-list if-none-match-entag {
-          // FIXME: Do we need this?
-          type entag-or-wildcard-type;
-        }
-        leaf if-unmodified-since-timestamp {
-          type yang:date-time;
-        }
-        leaf if-modified-since-timestamp {
-          // FIXME: Do we need this?
-          type yang:date-time;
-        }
+      type enumeration {
+        enum unbounded;
+      }
+      type uint16 {
+        range "1..max";
       }
     }
   }
 
-  // FIXME: Only relevant for the "leaf-based approach"
-  augment /nc:edit-config/nc:output {
-    uses netconf-transaction-id-groping;
+  augment /nc:edit-config/nc:input {
+    leaf depth {
+      type depth-type;
+      default unbounded;
+    }
   }
-  // FIXME: Only relevant for the "leaf-based approach"
-  augment /ncds:get-config/ncds:output {
-    // FIXME: Say not filter aware
-    uses netconf-transaction-id-groping;
+
+  augment /nc:edit-config/nc:output {
+    anyxml update;
   }
 }
 ~~~
+
+This module defines the depth tag in the edit-data input and 
+the update list in its output.
 
 ~~~ yang
 module ietf-netconf-nmda-transaction-id {
@@ -593,82 +580,47 @@ module ietf-netconf-nmda-transaction-id {
     prefix yang;
   }
 
-  grouping netconf-transaction-id-groping {
-    leaf entag {  
-      type entag-type;
-    }
-    leaf timestamp {  
-      type yang:date-time;
-    }
-  }
-
-  // FIXME: Only relevant for the "leaf-based approach"
-  container netconf-transaction-id {
-    uses netconf-transaction-id-groping;
-  }
-
-  typedef wildcard-type {
-    type string {
-      length 1;
-      pattern '*';
-    }
-  }
-  typedef entag-type {
-    description "Base64 encoded tag value"
-    type string {
-      pattern '[A-Za-z0-9+/]+';
-    }
-  }
-  typedef entag-or-wildcard-type {
+  typedef depth-type {
     type union {
-      type wildcard-type;
-      type entag-type;
-    }
-  }
-
-  augment /ncds:edit-data/ncds:input {
-    container precondition {
-      choice precondition {
-        default none;
-        leaf none {
-          type empty;
-        }
-        leaf-list if-match-entag {
-          type entag-or-wildcard-type;
-        }
-        leaf-list if-none-match-entag {
-          type entag-or-wildcard-type;
-        }
-        leaf if-unmodified-since-timestamp {
-          type yang:date-time;
-        }
-        leaf if-modified-since-timestamp {
-          type yang:date-time;
-        }
+      type enumeration {
+        enum unbounded;
+      }
+      type uint16 {
+        range "1..max";
       }
     }
   }
 
-  // FIXME: Only relevant for the "leaf-based approach"
-  augment /ncds:edit-data/ncds:output {
-    uses netconf-transaction-id-groping;
+  augment /ncds:edit-data/nc:input {
+    leaf depth {
+      type depth-type;
+      default unbounded;
+    }
   }
-  // FIXME: Only relevant for the "leaf-based approach"
-  augment /ncds:get-data/ncds:output {
-    // FIXME: Say not filter aware
-    uses netconf-transaction-id-groping;
+
+  augment /ncds:edit-data/nc:output {
+    anyxml update;
   }
 }
 ~~~
 
+# Appendix A.  NETCONF Error List
 
+The NETCONF specification RFC 6241 
+[RFC6241](https://tools.ietf.org/html/rfc6241) defines some specific
+error codes and messages for different operations.  Here one such
+error is added to the table.  The error is used when a conditional
+transaction fails one of its criteria.
 
-
-
-
-
-
-
+~~~
+   error-tag:      data-missing
+   error-type:     protocol
+   error-severity: error
+   error-info:     current-value : current value of the property that 
+                                   failed the precondition
+   Description:    Request could not be completed because the 
+                   precondition specified in the request was not met.
+~~~
 
 # Security Considerations
 
@@ -680,12 +632,9 @@ TODO Security
 This document has no IANA actions.
 
 
-
 --- back
 
 # Acknowledgments
 {:numbered="false"}
 
 TODO acknowledge.
-
-
