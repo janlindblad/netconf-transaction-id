@@ -13,7 +13,17 @@ Expires: 6 May 2021
 
 Abstract
 
-   TODO Abstract
+   NETCONF clients and servers often need to have a synchronized view of
+   the server's configuration data stores.  The volume of configuration
+   data in a server may be very large, while data store changes
+   typically are small when observed at typical client resynchronization
+   intervals.
+
+   Rereading the entire data store and analyzing the response for
+   changes is a an inefficient mechanism for synchronization.  This
+   document specifies an extension to NETCONF that allows clients and
+   servers to keep synchronized with a much smaller data exchange and
+   without any need for servers to store information about the clients.
 
 Discussion Venues
 
@@ -39,16 +49,6 @@ Status of This Memo
 
    This Internet-Draft will expire on 6 May 2021.
 
-Copyright Notice
-
-   Copyright (c) 2020 IETF Trust and the persons identified as the
-   document authors.  All rights reserved.
-
-
-
-
-
-
 
 
 
@@ -57,6 +57,11 @@ Lindblad                   Expires 6 May 2021                   [Page 1]
 
 Internet-Draft                    NCTID                    November 2020
 
+
+Copyright Notice
+
+   Copyright (c) 2020 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
 
    This document is subject to BCP 78 and the IETF Trust's Legal
    Provisions Relating to IETF Documents (https://trustee.ietf.org/
@@ -73,15 +78,15 @@ Table of Contents
    2.  Conventions and Definitions . . . . . . . . . . . . . . . . .   3
    3.  NETCONF Extension . . . . . . . . . . . . . . . . . . . . . .   3
    4.  Configuration Retreival . . . . . . . . . . . . . . . . . . .   4
-     4.1.  Configuration Response Pruning  . . . . . . . . . . . . .   5
-   5.  Configuration Update  . . . . . . . . . . . . . . . . . . . .   7
-     5.1.  Conditional Configuration Update  . . . . . . . . . . . .  10
-   6.  YANG Modules  . . . . . . . . . . . . . . . . . . . . . . . .  13
-   7.  Security Considerations . . . . . . . . . . . . . . . . . . .  16
-   8.  IANA Considerations . . . . . . . . . . . . . . . . . . . . .  16
-   9.  Normative References  . . . . . . . . . . . . . . . . . . . .  16
-   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  16
-   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  16
+     4.1.  Configuration Response Pruning  . . . . . . . . . . . . .   6
+   5.  Configuration Update  . . . . . . . . . . . . . . . . . . . .   8
+     5.1.  Conditional Configuration Update  . . . . . . . . . . . .  11
+   6.  YANG Modules  . . . . . . . . . . . . . . . . . . . . . . . .  14
+   7.  Security Considerations . . . . . . . . . . . . . . . . . . .  17
+   8.  IANA Considerations . . . . . . . . . . . . . . . . . . . . .  17
+   9.  Normative References  . . . . . . . . . . . . . . . . . . . .  17
+   Acknowledgments . . . . . . . . . . . . . . . . . . . . . . . . .  17
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  17
 
 1.  Introduction
 
@@ -102,17 +107,17 @@ Table of Contents
    a client sends a subsequent change request, which arrives soon
    thereafter.
 
-   Evidence of a transaction-id feature being demanded by clients is
-   that several server implementors have built proprietary and mutually
-   incompatible mechanisms for obtaining a transaction id from a NETCONF
-   server.
-
 
 
 Lindblad                   Expires 6 May 2021                   [Page 2]
 
 Internet-Draft                    NCTID                    November 2020
 
+
+   Evidence of a transaction-id feature being demanded by clients is
+   that several server implementors have built proprietary and mutually
+   incompatible mechanisms for obtaining a transaction id from a NETCONF
+   server.
 
    RESTCONF, RFC 8040 RFC8040 (https://tools.ietf.org/html/rfc8040),
    defines a mechanism for detecting changes in configuration subtrees
@@ -158,17 +163,17 @@ Internet-Draft                    NCTID                    November 2020
 
    Entag attribute values are encoded as YANG strings.
 
-      Comment, to be removed
-
-      Do we want to limit the entag attribute strings in some way?  E.g.
-      only base64 characters, some min or max length, ...?
-
 
 
 Lindblad                   Expires 6 May 2021                   [Page 3]
 
 Internet-Draft                    NCTID                    November 2020
 
+
+      Comment, to be removed
+
+      Do we want to limit the entag attribute strings in some way?  E.g.
+      only base64 characters, some min or max length, ...?
 
 4.  Configuration Retreival
 
@@ -202,6 +207,25 @@ Internet-Draft                    NCTID                    November 2020
    To retrieve entag attributes for "ietf-interfaces", but not for
    "nacm", a client might send:
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Lindblad                   Expires 6 May 2021                   [Page 4]
+
+Internet-Draft                    NCTID                    November 2020
+
+
    <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1"
         xmlns:ietf-netconf-transaction-id=
           "FIXME">
@@ -217,21 +241,46 @@ Internet-Draft                    NCTID                    November 2020
      </get-config>
    </rpc>
 
-
-
-
-
-Lindblad                   Expires 6 May 2021                   [Page 4]
-
-Internet-Draft                    NCTID                    November 2020
-
-
    When a NETCONF server receives a get-config or get-data request
    containing ietf-netconf-transaction-id:entag attributes with the
    value "?", it MUST return entag attributes for all versioned elements
    below this point included in the reply.
 
    The server's response to request above might look like:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Lindblad                   Expires 6 May 2021                   [Page 5]
+
+Internet-Draft                    NCTID                    November 2020
+
 
    <rpc-reply message-id="1"
               xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
@@ -271,17 +320,6 @@ Internet-Draft                    NCTID                    November 2020
    that the configuration retrieval request is pruned with respect to
    the client's prior knowledge.
 
-
-
-
-
-
-
-Lindblad                   Expires 6 May 2021                   [Page 5]
-
-Internet-Draft                    NCTID                    November 2020
-
-
    By specifying the previously received entag attribute values in the
    get-config or get-data request, the client indicates that child
    elements of already known parts of the configuration SHALL be
@@ -290,6 +328,15 @@ Internet-Draft                    NCTID                    November 2020
    To retrieve only changes for "ietf-interfaces" since the last known
    transaction-id "abc12345678", but include the entire configuration
    for "nacm", a client might send:
+
+
+
+
+
+Lindblad                   Expires 6 May 2021                   [Page 6]
+
+Internet-Draft                    NCTID                    November 2020
+
 
    <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1"
         xmlns:ietf-netconf-transaction-id=
@@ -333,7 +380,16 @@ Internet-Draft                    NCTID                    November 2020
 
 
 
-Lindblad                   Expires 6 May 2021                   [Page 6]
+
+
+
+
+
+
+
+
+
+Lindblad                   Expires 6 May 2021                   [Page 7]
 
 Internet-Draft                    NCTID                    November 2020
 
@@ -389,7 +445,7 @@ Internet-Draft                    NCTID                    November 2020
 
 
 
-Lindblad                   Expires 6 May 2021                   [Page 7]
+Lindblad                   Expires 6 May 2021                   [Page 8]
 
 Internet-Draft                    NCTID                    November 2020
 
@@ -445,7 +501,7 @@ Internet-Draft                    NCTID                    November 2020
 
 
 
-Lindblad                   Expires 6 May 2021                   [Page 8]
+Lindblad                   Expires 6 May 2021                   [Page 9]
 
 Internet-Draft                    NCTID                    November 2020
 
@@ -501,7 +557,7 @@ Internet-Draft                    NCTID                    November 2020
 
 
 
-Lindblad                   Expires 6 May 2021                   [Page 9]
+Lindblad                   Expires 6 May 2021                  [Page 10]
 
 Internet-Draft                    NCTID                    November 2020
 
@@ -557,7 +613,7 @@ Internet-Draft                    NCTID                    November 2020
 
 
 
-Lindblad                   Expires 6 May 2021                  [Page 10]
+Lindblad                   Expires 6 May 2021                  [Page 11]
 
 Internet-Draft                    NCTID                    November 2020
 
@@ -613,7 +669,7 @@ Internet-Draft                    NCTID                    November 2020
 
 
 
-Lindblad                   Expires 6 May 2021                  [Page 11]
+Lindblad                   Expires 6 May 2021                  [Page 12]
 
 Internet-Draft                    NCTID                    November 2020
 
@@ -669,7 +725,7 @@ Internet-Draft                    NCTID                    November 2020
 
 
 
-Lindblad                   Expires 6 May 2021                  [Page 12]
+Lindblad                   Expires 6 May 2021                  [Page 13]
 
 Internet-Draft                    NCTID                    November 2020
 
@@ -725,7 +781,7 @@ Internet-Draft                    NCTID                    November 2020
 
 
 
-Lindblad                   Expires 6 May 2021                  [Page 13]
+Lindblad                   Expires 6 May 2021                  [Page 14]
 
 Internet-Draft                    NCTID                    November 2020
 
@@ -781,7 +837,7 @@ Internet-Draft                    NCTID                    November 2020
 
 
 
-Lindblad                   Expires 6 May 2021                  [Page 14]
+Lindblad                   Expires 6 May 2021                  [Page 15]
 
 Internet-Draft                    NCTID                    November 2020
 
@@ -837,7 +893,7 @@ Internet-Draft                    NCTID                    November 2020
 
 
 
-Lindblad                   Expires 6 May 2021                  [Page 15]
+Lindblad                   Expires 6 May 2021                  [Page 16]
 
 Internet-Draft                    NCTID                    November 2020
 
@@ -893,4 +949,4 @@ Author's Address
 
 
 
-Lindblad                   Expires 6 May 2021                  [Page 16]
+Lindblad                   Expires 6 May 2021                  [Page 17]
