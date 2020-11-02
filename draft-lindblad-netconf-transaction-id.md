@@ -28,7 +28,16 @@ informative:
 
 --- abstract
 
-TODO Abstract
+NETCONF clients and servers often need to have a synchronized view of
+the server's configuration data stores.  The volume of configuration 
+data in a server may be very large, while data store changes typically
+are small when observed at typical client resynchronization intervals.
+
+Rereading the entire data store and analyzing the response for changes
+is a an inefficient mechanism for synchronization.  This document 
+specifies an extension to NETCONF that allows clients and servers to
+keep synchronized with a much smaller data exchange and without any
+need for servers to store information about the clients.
 
 --- middle
 
