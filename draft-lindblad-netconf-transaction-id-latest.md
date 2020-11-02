@@ -98,14 +98,11 @@ is up to the clients and servers to decice as opaque quantities.  It
 is essential that the entag values have a large value space in order
 to not run out or collide.  They SHOULD be at least 32-bit quantities.
 
-Entag attribute values MUST be base64 encoded strings 
-RFC 4648 [RFC4648](https://tools.ietf.org/html/rfc4648).
+Entag attribute values are encoded as YANG strings.
 
-~~~
-  type string {
-    pattern "[A-Za-z0-9+/]";
-  }
-~~~
+> Comment, to be removed    
+  Do we want to limit the entag attribute strings in some way?
+  E.g. only base64 characters, some min or max length, ...?
 
 # Configuration Retreival
 
@@ -129,13 +126,6 @@ retrieval, the client inserts entag attributes in the filter section.
 
 To retrieve entag attributes across the entire NETCONF server 
 configuration, a client might send:
-
-
-
-FIXME top level entag.
-
-
-
 
 ~~~
 <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1"
@@ -181,13 +171,13 @@ The server's response to request above might look like:
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
                 ietf-netconf-transaction-id:entag="def88884321">
       <interface ietf-netconf-transaction-id:entag="def88884321">
-        <name>GigabitEthernet-0/0/0</name>
+        <name>GigabitEthernet-0/0</name>
         <description>Management Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
       </interface>
       <interface ietf-netconf-transaction-id:entag="abc12345678">
-        <name>GigabitEthernet-0/0/1</name>
+        <name>GigabitEthernet-0/1</name>
         <description>Upward Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
@@ -264,13 +254,13 @@ above might look like:
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
                 ietf-netconf-transaction-id:entag="def88884321">
       <interface ietf-netconf-transaction-id:entag="def88884321">
-        <name>GigabitEthernet-0/0/0</name>
+        <name>GigabitEthernet-0/0</name>
         <description>Management Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
       </interface>
       <interface ietf-netconf-transaction-id:entag="=">
-        <name>GigabitEthernet-0/0/1</name>
+        <name>GigabitEthernet-0/1</name>
       </interface>
     </interfaces>
     <nacm xmlns="urn:ietf:params:xml:ns:yang:ietf-netconf-acm"/>
@@ -314,7 +304,7 @@ value must be set to all parent versioned elements' entag attributes,
 cascading all the way to the datastore root.
 
 For example, if a client wishes to update the interface description
-for interface "GigabitEthernet-0/0/1" to "Downward Interface", under 
+for interface "GigabitEthernet-0/1" to "Downward Interface", under 
 transaction-id "ghi55550101", it might send:
 
 ~~~
@@ -330,9 +320,10 @@ transaction-id "ghi55550101", it might send:
       ghi55550101
     </transaction-id>
     <config>
-      <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+      <interfaces 
+        xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
         <interface>
-          <name>GigabitEthernet-0/0/1</name>
+          <name>GigabitEthernet-0/1</name>
           <description>Downward Interface</description>
         </interface>
       </interfaces>
@@ -353,13 +344,13 @@ ietf-netconf-transaction-id:entag="?" might then return:
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
                 ietf-netconf-transaction-id:entag="ghi55550101">
       <interface ietf-netconf-transaction-id:entag="def88884321">
-        <name>GigabitEthernet-0/0/0</name>
+        <name>GigabitEthernet-0/0</name>
         <description>Management Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
       </interface>
       <interface ietf-netconf-transaction-id:entag="ghi55550101">
-        <name>GigabitEthernet-0/0/1</name>
+        <name>GigabitEthernet-0/1</name>
         <description>Downward Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
@@ -371,7 +362,7 @@ ietf-netconf-transaction-id:entag="?" might then return:
 
 In case the server received a configuration change from another 
 source, such as a CLI operator, adding an MTU value for the interface 
-"GigabitEthernet-0/0/0", a subsequent get-config request for 
+"GigabitEthernet-0/0", a subsequent get-config request for 
 "ietf-interfaces", with ietf-netconf-transaction-id:entag="?" might 
 then return:
 
@@ -384,14 +375,14 @@ then return:
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
                 ietf-netconf-transaction-id:entag="auto22223333">
       <interface ietf-netconf-transaction-id:entag="auto22223333">
-        <name>GigabitEthernet-0/0/0</name>
+        <name>GigabitEthernet-0/0</name>
         <description>Management Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
         <mtu>768</mtu>
       </interface>
       <interface ietf-netconf-transaction-id:entag="ghi55550101">
-        <name>GigabitEthernet-0/0/1</name>
+        <name>GigabitEthernet-0/1</name>
         <description>Downward Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
@@ -444,7 +435,7 @@ an rpc-error with the following values:
    error-severity: error
 ~~~
 
-Additionally, the error-info tag MUST contain a yang-data structure
+Additionally, the error-info tag MUST contain a sx:structure
 entag-value-mismatch-error-info, with mismatch-path set to the 
 instance identifier value identifying one of the versioned elements 
 that had an entag value mismatch, and mismatch-entag-value set to
@@ -452,7 +443,7 @@ the server's current value of the entag attribute for that versioned
 element.
 
 For example, if a client wishes to delete the interface 
-"GigabitEthernet-0/0/1" if and only if its configuration has not been
+"GigabitEthernet-0/1" if and only if its configuration has not been
 altered since this client last synchronized its configuration with the
 server (at which point it received a transaction-id "ghi55550101"), 
 regardless of any possible changes to other interfaces, it might send:
@@ -468,10 +459,11 @@ regardless of any possible changes to other interfaces, it might send:
     </target>
     <test-option>test-then-set</test-option>
     <config>
-      <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+      <interfaces 
+        xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
         <interface nc:operation="delete" 
                    ietf-netconf-transaction-id:entag="ghi55550101">
-          <name>GigabitEthernet-0/0/1</name>
+          <name>GigabitEthernet-0/1</name>
         </interface>
       </interfaces>
     </config>
@@ -479,7 +471,7 @@ regardless of any possible changes to other interfaces, it might send:
 </rpc>
 ~~~
 
-If interface "GigabitEthernet-0/0/1" has the entag value "ghi55550101",
+If interface "GigabitEthernet-0/1" has the entag value "ghi55550101",
 as expected by the client, the transaction goes through.
 
 A subsequent get-config request for "ietf-interfaces", with 
@@ -494,7 +486,7 @@ ietf-netconf-transaction-id:entag="?" might then return:
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
                 ietf-netconf-transaction-id:entag="auto77775511">
       <interface ietf-netconf-transaction-id:entag="def88884321">
-        <name>GigabitEthernet-0/0/0</name>
+        <name>GigabitEthernet-0/0</name>
         <description>Management Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
@@ -504,7 +496,7 @@ ietf-netconf-transaction-id:entag="?" might then return:
 </rpc>
 ~~~
 
-If interface "GigabitEthernet-0/0/1" did not have the entag value 
+If interface "GigabitEthernet-0/1" did not have the entag value 
 "ghi55550101", the server rejects the transaction, and might send:
 
 ~~~
@@ -520,7 +512,7 @@ If interface "GigabitEthernet-0/0/1" did not have the entag value
     <error-info>
       <ietf-netconf-transaction-id:entag-value-mismatch-error-info>
         <ietf-netconf-transaction-id:mismatch-path>
-          /if:interfaces/if:interface[if:name="GigabitEthernet-0/0/0"]
+          /if:interfaces/if:interface[if:name="GigabitEthernet-0/0"]
         </ietf-netconf-transaction-id:mismatch-path>
         <ietf-netconf-transaction-id:mismatch-entag-value>
           auto77775511
@@ -551,17 +543,27 @@ If interface "GigabitEthernet-0/0/1" did not have the entag value
 
 # YANG Modules
 
-This module defines the depth tag in the edit-config input and 
-the update list in its output.
-
 > Comment, to be removed    
   This is YANG 1.1. Do we also want 1.0? Makes it possible to implement on 1.0 servers
 
 ~~~ yang
-module ietf-netconf-nmda-transaction-id {
+module ietf-netconf-transaction-id {
   yang-version 1.1;
-  namespace 'urn:ietf:params:xml:ns:netconf:nmda:transaction-id';
-  prefix ietf-netconf-nmda-transaction-id;
+  namespace 
+    'urn:ietf:params:xml:ns:yang:ietf-netconf-transaction-id';
+  prefix ietf-netconf-transaction-id;
+
+  import ietf-netconf {
+    prefix nc;
+  }
+
+  import ietf-netconf-nmda {
+    prefix ncds;
+  }
+
+  import ietf-yang-structure-ext {
+    prefix sx;
+  }
 
   organization
     "IETF NETCONF (Network Configuration) Working Group";
@@ -596,39 +598,40 @@ module ietf-netconf-nmda-transaction-id {
       "RFC XXXX: Xxxxxxxxx";
   }
 
-  import ietf-netconf {
-    prefix nc;
-  }
-
-  import ietf-netconf-nmda {
-    prefix ncds;
-  }
-
-  import ietf-yang-types {
-    prefix yang;
-  }
-
   typedef transaction-id-t {
-    type string {
-      pattern "[A-Za-z0-9+/]";
-    }
+    type string;
+    description 
+      "Unique value representing a specific transaction";
   }
 
   grouping transaction-id-grouping {
     leaf transaction-id {
-      type entag-t;
+      type transaction-id-t;
+      description
+        "Transaction-id value selected by the client.  This string
+         should be chosen to give a high probability to be unique on
+         the server.";
     }
+    description
+      "Grouping for transaction-id, to be augmented into rpcs
+       that modify configuration data stores.";
   }
 
-  augment /ncds:edit-config/nc:input {
+  augment /nc:edit-config/nc:input {
     uses transaction-id-grouping;
+    description
+      "Injects the transaction-id leaf into the edit-config
+      operation";
   }
 
-  augment /ncds:edit-data/nc:input {
+  augment /ncds:edit-data/ncds:input {
     uses transaction-id-grouping;
+    description
+      "Injects the transaction-id leaf into the edit-data
+      operation";
   }
 
-  rc:yang-data entag-value-mismatch-error-info {
+  sx:structure entag-value-mismatch-error-info {
     container entag-value-mismatch-error-info {
       description
          "This error is returned by a NETCONF server when a client
@@ -644,7 +647,7 @@ module ietf-netconf-nmda-transaction-id {
            entag value.";
       }
       leaf mismatch-entag-value {
-        type entag-t;
+        type transaction-id-t;
         description
           "Indicates server's value of the entag attribute for one
            mismatching element.";
