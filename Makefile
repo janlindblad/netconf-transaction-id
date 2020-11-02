@@ -1,7 +1,7 @@
 LIBDIR := lib
 include $(LIBDIR)/main.mk
 
-.PRECIOUS: draft-lindblad-netconf-transaction-id-latest.xml
+.PRECIOUS: draft-lindblad-netconf-transaction-id*.xml
 
 $(LIBDIR)/main.mk:
 ifneq (,$(shell grep "path *= *$(LIBDIR)" .gitmodules 2>/dev/null))

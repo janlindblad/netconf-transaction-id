@@ -1,12 +1,2 @@
-NED_NAME=transid
-RFC_REPO=/Users/jlindbla/git/ietf-yang/standard/ietf/RFC/
-ncs-make-package --netconf-ned . $NED_NAME
-pyang --ietf --strict --canonical --path=$RFC_REPO $NED_NAME/src/yang/ietf-netconf-transaction-id.yang 
-cp $RFC_REPO/ietf-netconf.yang $NED_NAME/src/yang/
-cp $RFC_REPO/ietf-netconf-nmda.yang $NED_NAME/src/yang/
-cp $RFC_REPO/ietf-yang-structure-ext.yang $NED_NAME/src/yang/
-cp $RFC_REPO/ietf-datastores.yang $NED_NAME/src/yang/
-cp $RFC_REPO/ietf-origin.yang $NED_NAME/src/yang/
-cp $RFC_REPO/ietf-netconf-with-defaults.yang $NED_NAME/src/yang/
-cp $RFC_REPO/ietf-yang-metadata.yang $NED_NAME/src/yang/
-make -C $NED_NAME/src
+awk '/module ietf-netconf-transaction-id/,/~~~/ {if($0 != "~~~")print}' draft-lindblad-netconf-transaction-id.md > ietf-netconf-transaction-id.yang
+pyang --ietf --strict --canonical --path=./RFC/ ietf-netconf-transaction-id.yang 
