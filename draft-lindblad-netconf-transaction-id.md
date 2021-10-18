@@ -34,7 +34,7 @@ data in a server may be very large, while data store changes typically
 are small when observed at typical client resynchronization intervals.
 
 Rereading the entire data store and analyzing the response for changes
-is a an inefficient mechanism for synchronization.  This document 
+is an inefficient mechanism for synchronization.  This document 
 specifies an extension to NETCONF that allows clients and servers to
 keep synchronized with a much smaller data exchange and without any
 need for servers to store information about the clients.
@@ -70,7 +70,7 @@ RESTCONF, RFC 8040 [RFC8040](https://tools.ietf.org/html/rfc8040),
 defines a mechanism for detecting changes in configuration subtrees 
 based on Entity-tags (ETags).  In conjunction with this, RESTCONF 
 provides a way to make configuration changes conditional on the server
-confiuguration being untouched by others. This mechanism leverages 
+confiuguration being untouched by others.  This mechanism leverages 
 RFC 7232 [RFC7232](https://tools.ietf.org/html/rfc7232) 
 "Hypertext Transfer Protocol (HTTP/1.1): Conditional Requests".
 
@@ -89,75 +89,123 @@ when, and only when, they appear in all capitals, as shown here.
 This document describes a NETCONF extension which modifies the 
 behavior of get-config, get-data, edit-config and edit-data such
 that clients are able to conditionally retrieve and update the 
-configuration in a NETCONF server.  NETCONF servers that supports 
+configuration in a NETCONF server.  NETCONF servers that support 
 this extension MUST announce the capability "FIXME".
 
-The extended operations defined in this document pertains to YANG
-containers and list elements.  It is NOT REQUIRED that a conforming 
-server allows the extended operations to apply to all containers and 
-list elements in the server configuration.  The set of containers and
-list elements that the server supports with respect to this NETCONF
-extension are collectively referred to as the "versioned elements".
+## ETag attribute
 
-The NETCONF server will maintain a record of the transaction that
-last changed each versioned element.  This transaction-id meta level
-data is communicated between the server and client in the form of
-an XML attribute called "entag".  The values for the entag attribute
-is up to the clients and servers to decice as opaque quantities.  It
-is essential that the entag values have a large value space in order
-to not run out or collide.  They SHOULD be at least 32-bit quantities.
+Central to the configuration retrieval and update mechanisms described 
+in the following sections is a meta data XML attribute called "etag".  
+Servers MUST maintain an etag value for each configuration datastore 
+they implement.  Servers SHOULD maintain etag values for YANG 
+containers that hold configuration for different subsystems.  Servers 
+MAY maintain etag values for any YANG container or list element they 
+implement. 
 
-Entag attribute values are encoded as YANG strings.
+The etag attribute values are opaque UTF-8 strings chosen freely by 
+the server, except the etag string must not contain space, backslash 
+or double quotes. The point of this restriction is to make it easy to 
+reuse implementations that adhere to section 2.3.1 in RFC 7232 
+[RFC7232](https://tools.ietf.org/html/rfc7232).  The probability that 
+an etag value used historically is used again by this server SHOULD be 
+made very low.
 
-> Comment, to be removed    
-  Do we want to limit the entag attribute strings in some way?
-  E.g. only base64 characters, some min or max length, ...?
+The etag attribute is defined in the namespace "FIXME".
 
-# Configuration Retreival
+## ETag value changes
 
 When a NETCONF client retrieves the configuration from a NETCONF 
-server that implement this specification, it may request that the
-configuration is entity tagged.  The entity tags are XML attributes 
+server that implements this specification, it MAY request that the
+configuration is entity tagged.  The entity tags are attributes 
 added to some of the retrieved configuration elements by the server.  
 These elements are collectively called the "versioned elements".
 
-The entity-tag (entag) attributes are guaranteed to change every
-time there has been a configuration change at or below the element
-bearing the attribute.
+The server returning the entity-tag (etag) attributes for the 
+versioned elements MUST ensure the etag values are changed every time 
+there has been a configuration change at or below the element bearing 
+the attribute.  This means any update of a config true element will 
+result in new etag values for all ancestor versioned elements, up to 
+and including the datastore root itself.
 
-Clients request entity tags to be added by setting the
-ietf-netconf-transaction-id:entag attribute to the value "?" on one or 
-more elements in the request.  Entags MUST be returned for all 
-descendant versioned elements.  In order to request that entags are 
-returned for the entire configuration, the client can place the 
-attribute on the top edit-config or edit-data tags.  For more specific
-retrieval, the client inserts entag attributes in the filter section.
+The server MUST NOT change the etag values due to updates in config 
+true data in other parts of the YANG data tree or due to changes in
+config false data.
 
-To retrieve entag attributes across the entire NETCONF server 
+These rules are chosen to be consistent with the ETag mechanism in 
+RESTCONF, RFC 8040 [RFC8040](https://tools.ietf.org/html/rfc8040), 
+specifically sections 3.4.1.2 and 3.5.2.
+
+# Configuration Retreival
+
+Clients MAY request the server to return etag attribute values in the 
+response by adding one or more etag attributes in get-config or 
+get-data requests.  
+
+The etag attribute may be added directly on the get-config or get-data 
+requests, in which case it pertains to the entire datastore.  A client
+may also add etag attributes to zero or more individual elements in 
+the get-config or get-data request, in which case it pertains to the
+subtree rooted at that element.
+
+For each element that the client requests etag attributes, the server 
+MUST return etags for all versioned elements at or below that point 
+that are part of the server's respone.
+
+If the client is requesting an etag value for an element that is not 
+among the server's versioned elements, then the server MUST return the 
+etag attribute on the closest ancestor that is a versioned element, 
+and all children of that ancestor.  The datastore root is always a 
+versioned element.
+
+## Initial Configuration Response
+
+When the client adds etag attributes to a get-config or get-data 
+request, it should specify the last known etag values it has seen for 
+the elements it is asking about.  Initially, the client will not know 
+any etag value and should use "?".  
+
+To retrieve etag attributes across the entire NETCONF server 
 configuration, a client might send:
 
 ~~~
 <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1"
-     xmlns:ietf-netconf-transaction-id=
-       "FIXME">
-  <get-config ietf-netconf-transaction-id:entag="?"/>
+     xmlns:txid="FIXME">
+  <get-config txid:etag="?"/>
 </rpc>
 ~~~
 
-To retrieve entag attributes for "ietf-interfaces", but not for "nacm",
+To retrieve etag attributes for a specific interface using an xpath 
+filter, a client might send:
+
+~~~
+<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1"
+     xmlns:txid="FIXME">
+  <get-config>
+    <source>
+      <running/>
+    </source>
+    <filter type="xpath"
+      xmlns:if="urn:ietf:params:xml:ns:yang:ietf-interfaces"
+      select=
+        "/if:interfaces/if:interface[if:name='GigabitEthernet-0/0']"
+      txid:etag="?"/>
+  </get-config>
+</rpc>
+~~~
+
+To retrieve etag attributes for "ietf-interfaces", but not for "nacm",
 a client might send:
 
 ~~~
 <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1"
-     xmlns:ietf-netconf-transaction-id=
-       "FIXME">
+     xmlns:txid="FIXME">
   <get-config>
     <source>
       <running/>
     </source>
     <filter>
       <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-        ietf-netconf-transaction-id:entag="?"/>
+        txid:etag="?"/>
       <nacm xmlns="urn:ietf:params:xml:ns:yang:ietf-netconf-acm"/>
     </filter>
   </get-config>
@@ -165,27 +213,28 @@ a client might send:
 ~~~
 
 When a NETCONF server receives a get-config or get-data request 
-containing ietf-netconf-transaction-id:entag attributes with the value 
-"?", it MUST return entag attributes for all versioned elements below 
-this point included in the reply.
+containing txid:etag attributes with the value "?", it MUST return 
+etag attributes for all versioned elements below this point included 
+in the reply.
 
-The server's response to request above might look like:
+If the server considers the container "interfaces" and the list 
+"interface" elements to be versioned elements, the server's response 
+to the request above might look like:
 
 ~~~
 <rpc-reply message-id="1"
            xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
-           xmlns:ietf-netconf-transaction-id=
-             "FIXME">
-  <data ietf-netconf-transaction-id:entag="def88884321">
+           xmlns:txid="FIXME">
+  <data txid:etag="def88884321">
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-                ietf-netconf-transaction-id:entag="def88884321">
-      <interface ietf-netconf-transaction-id:entag="def88884321">
+                txid:etag="def88884321">
+      <interface txid:etag="def88884321">
         <name>GigabitEthernet-0/0</name>
         <description>Management Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
       </interface>
-      <interface ietf-netconf-transaction-id:entag="abc12345678">
+      <interface txid:etag="abc12345678">
         <name>GigabitEthernet-0/1</name>
         <description>Upward Interface</description>
         <type>ianaift:ethernetCsmacd</type>
@@ -207,29 +256,24 @@ The server's response to request above might look like:
 
 ## Configuration Response Pruning
 
-A NETCONF client that already knows some entag values may request that
+A NETCONF client that already knows some etag values MAY request that
 the configuration retrieval request is pruned with respect to the 
 client's prior knowledge.
 
-By specifying the previously received entag attribute values in the 
-get-config or get-data request, the client indicates that child 
-elements of already known parts of the configuration SHALL be omitted.
-
-To retrieve only changes for "ietf-interfaces" since the last known 
-transaction-id "abc12345678", but include the entire configuration for 
-"nacm", a client might send:
+To retrieve only changes for "ietf-interfaces" that do not have the 
+last known transaction-id "abc12345678", but include the entire 
+configuration for "nacm", regardless of etags, a client might send:
 
 ~~~
 <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1"
-     xmlns:ietf-netconf-transaction-id=
-       "FIXME">
+     xmlns:txid="FIXME">
   <get-config>
     <source>
       <running/>
     </source>
     <filter>
       <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-        ietf-netconf-transaction-id:entag="abc12345678"/>
+        txid:etag="abc12345678"/>
       <nacm xmlns="urn:ietf:params:xml:ns:yang:ietf-netconf-acm"/>
     </filter>
   </get-config>
@@ -237,18 +281,32 @@ transaction-id "abc12345678", but include the entire configuration for
 ~~~
 
 When a NETCONF server receives a get-config or get-data request 
-containing ietf-netconf-transaction-id:entag attributes with the same
-value as the entag value known by the server for that element, it MUST 
-prune the contents of that subtree.
+containing a client specified etag attribute, there are several 
+different cases:
 
-In case the element with a matching entag value is a container, the
-container tag is returned with an entag attribute value of "=".  No
-child elements are returned for the container.
+* The element is not a versioned element, i.e. the server does not 
+maintain an etag value for this element.  In this case, the server 
+MUST look up the closest ancestor that is a versioned element, and 
+proceed as if the client had specified the etag value for that 
+element.
 
-In case the element with a matching entag value is a list element, the
-list element tag is returned with an entag attribute value of "=".  
-The list element will include the list elemenet keys, but no other 
-child elements.
+* The element is a versioned element, and the client specified etag 
+attribute value is different than the server's etag value for this
+element, then the server MUST return the contents as it would normally.
+
+* The element is a versioned element, and the client specified etag 
+attribute value does match the server's etag value, then server MUST 
+return the element decorated with an etag attribute with the value "=".
+
+* The element is a versioned element, the client specified etag 
+attribute value does match the server's etag value, and the element is 
+a container.  In this case the server MUST NOT return any of the 
+children of the container.
+
+* The element is a versioned element, the client specified etag 
+attribute value does match the server's etag value, and the element is 
+a list entry.  In this case the server MUST return the keys of the 
+list entry, and MUST NOT return any other children of the list entry.
 
 For example, assuming the NETCONF server configuration is the same as 
 in the previous rpc-reply example, the server's response to request 
@@ -257,18 +315,17 @@ above might look like:
 ~~~
 <rpc-reply message-id="1"
            xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
-           xmlns:ietf-netconf-transaction-id=
-             "FIXME">
-  <data ietf-netconf-transaction-id:entag="def88884321">
+           xmlns:txid="FIXME">
+  <data txid:etag="def88884321">
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-                ietf-netconf-transaction-id:entag="def88884321">
-      <interface ietf-netconf-transaction-id:entag="def88884321">
+                txid:etag="def88884321">
+      <interface txid:etag="def88884321">
         <name>GigabitEthernet-0/0</name>
         <description>Management Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
       </interface>
-      <interface ietf-netconf-transaction-id:entag="=">
+      <interface txid:etag="=">
         <name>GigabitEthernet-0/1</name>
       </interface>
     </interfaces>
@@ -287,47 +344,39 @@ above might look like:
 
 # Configuration Update
 
-When a NETCONF client sends an edit-config or edit-data request to a
-NETCONF server that implements this specification, the client MAY 
-specify a transaction-id value.  
+Whenever the configuration on a server changes for any reason, the 
+server MUST update the etag values for all versioned elements that 
+have children that changed.
 
-If specified, the server MUST use this value as the new value for all
-entag attribute values of any versioned element touched by the 
-transaction, if and only if the operation is successful.  The entag 
-value must be updated regardless of whether an actual value change 
-took place or not.  An element is touched if it is mentioned in the 
-transaction, even if it merely sets the element to the same value it 
-already has.
+How the server selects a new etag value or values to use for changed
+elements is described in section [ETag attribute](#etag-attribute).
 
-If the server side configuration changes for any reason, and there
-is no transaction-id value specified by a client, servers that supports 
-this specification MUST update the entag values as if a NETCONF client 
-had made the change and specified a transaction-id.  In this case, the 
-server MUST choose a random transaction-id value to use.
+When a NETCONF client sends an edit-config or edit-data request, the 
+server MUST change the etag value of all versioned elements that have 
+children that were mentioned in those edit-config or edit-data 
+payloads regardless of whether an actual value change took place or 
+not.  The server MUST return the etag value assigned on the XML ok 
+tag in the rpc-reply.
 
-> Comment, to be removed    
-  Is talk about "random" good enough, or do we need to get specific?
-
-Every time a versioned element has its entag value updated, the same
-value must be set to all parent versioned elements' entag attributes, 
-cascading all the way to the datastore root.
+Note in particular that the server MUST update the etag value for 
+elements that change as a result of the edit-config or edit-data, but 
+are not explicitly part of the edit-config or edit-data payload, such
+as dependent data under YANG 
+[RFC7950](https://tools.ietf.org/html/rfc7950) when- or 
+choice-statements.
 
 For example, if a client wishes to update the interface description
-for interface "GigabitEthernet-0/1" to "Downward Interface", under 
-transaction-id "ghi55550101", it might send:
+for interface "GigabitEthernet-0/1" to "Downward Interface", it might 
+send:
 
 ~~~
 <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1"
-     xmlns:ietf-netconf-transaction-id=
-       "FIXME">
+     xmlns:txid="FIXME">
   <edit-config xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
     <target>
       <candidate/>
     </target>
     <test-option>test-then-set</test-option>
-    <ietf-netconf-transaction-id:transaction-id>
-      ghi55550101
-    </transaction-id>
     <config>
       <interfaces 
         xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
@@ -341,24 +390,34 @@ transaction-id "ghi55550101", it might send:
 </rpc>
 ~~~
 
-A subsequent get-config request for "ietf-interfaces", with 
-ietf-netconf-transaction-id:entag="?" might then return:
+The server would update the description leaf in the candidate 
+datastore, and return an rpc-reply as follows:
 
 ~~~
 <rpc-reply message-id="1"
            xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
-           xmlns:ietf-netconf-transaction-id=
-             "FIXME">
-  <data>
+           xmlns:txid="FIXME">
+  <ok txid:etag="ghi55550101"/>
+</rpc-reply>
+~~~
+
+A subsequent get-config request for "ietf-interfaces", with 
+txid:etag="?" might then return:
+
+~~~
+<rpc-reply message-id="1"
+           xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
+           xmlns:txid="FIXME">
+  <data txid:etag="ghi55550101">
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-                ietf-netconf-transaction-id:entag="ghi55550101">
-      <interface ietf-netconf-transaction-id:entag="def88884321">
+                txid:etag="ghi55550101">
+      <interface txid:etag="def88884321">
         <name>GigabitEthernet-0/0</name>
         <description>Management Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
       </interface>
-      <interface ietf-netconf-transaction-id:entag="ghi55550101">
+      <interface txid:etag="ghi55550101">
         <name>GigabitEthernet-0/1</name>
         <description>Downward Interface</description>
         <type>ianaift:ethernetCsmacd</type>
@@ -369,28 +428,26 @@ ietf-netconf-transaction-id:entag="?" might then return:
 </rpc>
 ~~~
 
-In case the server received a configuration change from another 
-source, such as a CLI operator, adding an MTU value for the interface 
-"GigabitEthernet-0/0", a subsequent get-config request for 
-"ietf-interfaces", with ietf-netconf-transaction-id:entag="?" might 
-then return:
+In case the server at this point received a configuration change from 
+another source, such as a CLI operator, adding an MTU value for the 
+interface "GigabitEthernet-0/0", a subsequent get-config request for 
+"ietf-interfaces", with txid:etag="?" might then return:
 
 ~~~
 <rpc-reply message-id="1"
            xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
-           xmlns:ietf-netconf-transaction-id=
-             "FIXME">
-  <data ietf-netconf-transaction-id:entag="auto22223333">
+           xmlns:txid="FIXME">
+  <data txid:etag="cli22223333">
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-                ietf-netconf-transaction-id:entag="auto22223333">
-      <interface ietf-netconf-transaction-id:entag="auto22223333">
+                txid:etag="cli22223333">
+      <interface txid:etag="cli22223333">
         <name>GigabitEthernet-0/0</name>
         <description>Management Interface</description>
         <type>ianaift:ethernetCsmacd</type>
         <enabled>true</enabled>
         <mtu>768</mtu>
       </interface>
-      <interface ietf-netconf-transaction-id:entag="ghi55550101">
+      <interface txid:etag="ghi55550101">
         <name>GigabitEthernet-0/1</name>
         <description>Downward Interface</description>
         <type>ianaift:ethernetCsmacd</type>
@@ -407,34 +464,29 @@ Conditional Transactions are useful when a client is interested to
 make a configuration change, being sure that the server configuration
 has not changed since the client last inspected it.
 
-By supplying the latest entag values known to the client
+By supplying the latest etag values known to the client
 in its change requests (edit-config etc.), it can request the server 
 to reject the transaction in case any changes have occurred at the 
 server that the client is not yet aware of.
 
-Even if a client is constantly connected to a device, and even possibly
+Unless datastore global locks are taken for potentially long times,
+even if a client is constantly connected to a device, and even possibly
 receiving notifications when a server device's configuration changes,
 there is always a possibility that a change is introduced by another
 party in the time window between when the client last received an 
 update about the server's configuration until the server executes a 
-configuration change request.
-
-By leveraging conditional transactions, this race condition can be 
-eliminated efficiently.  If the client provides the transaction-id
-it expects the device to have as part of it's configuration change 
-request, and the device guarantees to only execute the request in case 
-the transaction-id in the request matches that on the server, the race 
-condition is removed.
+configuration change request.  By leveraging conditional transactions, 
+this race condition can be eliminated efficiently.  
 
 When a NETCONF client sends an edit-config or edit-data request to a
 NETCONF server that implements this specification, the client MAY 
-specify expected entag values on the versioned elements touched by the
+specify expected etag values on the versioned elements touched by the
 transaction.
 
-If such an entag value differs from the entag value stored on the 
+If such an etag value differs from the etag value stored on the 
 server, the server MUST reject the transaction.
 
-If the server rejects the transaction because the configuration entag
+If the server rejects the transaction because the configuration etag
 value differs from the client's expectation, ther server MUST return
 an rpc-error with the following values:
 
@@ -444,24 +496,23 @@ an rpc-error with the following values:
    error-severity: error
 ~~~
 
-Additionally, the error-info tag MUST contain a sx:structure
-entag-value-mismatch-error-info, with mismatch-path set to the 
+Additionally, the error-info tag MUST contain an sx:structure
+etag-value-mismatch-error-info, with mismatch-path set to the 
 instance identifier value identifying one of the versioned elements 
-that had an entag value mismatch, and mismatch-entag-value set to
-the server's current value of the entag attribute for that versioned
+that had an etag value mismatch, and mismatch-etag-value set to
+the server's current value of the etag attribute for that versioned
 element.
 
 For example, if a client wishes to delete the interface 
 "GigabitEthernet-0/1" if and only if its configuration has not been
 altered since this client last synchronized its configuration with the
-server (at which point it received a transaction-id "ghi55550101"), 
+server (at which point it received the etag "ghi55550101"), 
 regardless of any possible changes to other interfaces, it might send:
 
 ~~~
 <rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="1"
      xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0" 
-     xmlns:ietf-netconf-transaction-id=
-       "FIXME">
+     xmlns:txid="FIXME">
   <edit-config>
     <target>
       <candidate/>
@@ -471,7 +522,7 @@ regardless of any possible changes to other interfaces, it might send:
       <interfaces 
         xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
         <interface nc:operation="delete" 
-                   ietf-netconf-transaction-id:entag="ghi55550101">
+                   txid:etag="ghi55550101">
           <name>GigabitEthernet-0/1</name>
         </interface>
       </interfaces>
@@ -480,21 +531,29 @@ regardless of any possible changes to other interfaces, it might send:
 </rpc>
 ~~~
 
-If interface "GigabitEthernet-0/1" has the entag value "ghi55550101",
-as expected by the client, the transaction goes through.
-
-A subsequent get-config request for "ietf-interfaces", with 
-ietf-netconf-transaction-id:entag="?" might then return:
+If interface "GigabitEthernet-0/1" has the etag value "ghi55550101",
+as expected by the client, the transaction goes through, and the 
+server responds something like:
 
 ~~~
 <rpc-reply message-id="1"
            xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
-           xmlns:ietf-netconf-transaction-id=
-             "FIXME">
-  <data ietf-netconf-transaction-id:entag="auto77775511">
+           xmlns:txid="FIXME">
+  <ok txid:etag="xyz77775511"/>
+</rpc-reply>
+~~~
+
+A subsequent get-config request for "ietf-interfaces", with 
+txid:etag="?" might then return:
+
+~~~
+<rpc-reply message-id="1"
+           xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
+           xmlns:txid="FIXME">
+  <data txid:etag="xyz77775511">
     <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-                ietf-netconf-transaction-id:entag="auto77775511">
-      <interface ietf-netconf-transaction-id:entag="def88884321">
+                txid:etag="xyz77775511">
+      <interface txid:etag="def88884321">
         <name>GigabitEthernet-0/0</name>
         <description>Management Interface</description>
         <type>ianaift:ethernetCsmacd</type>
@@ -502,65 +561,44 @@ ietf-netconf-transaction-id:entag="?" might then return:
       </interface>
     </interfaces>
   </data>
-</rpc>
+</rpc-reply>
 ~~~
 
-If interface "GigabitEthernet-0/1" did not have the entag value 
-"ghi55550101", the server rejects the transaction, and might send:
+In case interface "GigabitEthernet-0/1" did not have the expected etag 
+value "ghi55550101", the server rejects the transaction, and might 
+send:
 
 ~~~
 <rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" 
            xmlns:if="urn:ietf:params:xml:ns:yang:ietf-interfaces"
-           xmlns:ietf-netconf-transaction-id=
-             "FIXME">
+           xmlns:txid="FIXME">
            message-id="1">
   <rpc-error>
     <error-type>protocol</error-type>
     <error-tag>operation-failed</error-tag>
     <error-severity>error</error-severity>
     <error-info>
-      <ietf-netconf-transaction-id:entag-value-mismatch-error-info>
-        <ietf-netconf-transaction-id:mismatch-path>
+      <txid:etag-value-mismatch-error-info>
+        <txid:mismatch-path>
           /if:interfaces/if:interface[if:name="GigabitEthernet-0/0"]
-        </ietf-netconf-transaction-id:mismatch-path>
-        <ietf-netconf-transaction-id:mismatch-entag-value>
-          auto77775511
-        </ietf-netconf-transaction-id:mismatch-entag-value>
-      </ietf-netconf-transaction-id:entag-value-mismatch-error-info>
+        </txid:mismatch-path>
+        <txid:mismatch-etag-value>
+          cli22223333
+        </txid:mismatch-etag-value>
+      </txid:etag-value-mismatch-error-info>
     </error-info>
   </rpc-error>
 </rpc-reply>
 ~~~
 
-> Comment, to be removed    
-  In order to reach the full flexibility with the above transaction 
-  rejection mechanism, it might make sense to reference parts of the
-  configuration just to see that they have not moved, with no intent
-  to make changes there.
-  To support this use case, a new operation mode "nocreate" might be
-  useful.  This would allow an edit config to talk about parts of the
-  configuration which are expected to exist with a particular 
-  confiuguration, and to abort the transaction if they do not exist.
-
-> Comment, to be removed    
-  NETCONF clients may be equally interested to apply a mechanism
-  similar to entags when retrieving operational state as well,
-  since there is often vey much of this data, and some if changes
-  rather rarely.  To support this use case, some sort of server
-  maintained change indicators may be invented, and combined with
-  a similar retrieval filter.
-
 # YANG Modules
-
-> Comment, to be removed    
-  This is YANG 1.1. Do we also want 1.0? Makes it possible to implement on 1.0 servers
 
 ~~~ yang
 module ietf-netconf-transaction-id {
   yang-version 1.1;
   namespace 
     'urn:ietf:params:xml:ns:yang:ietf-netconf-transaction-id';
-  prefix ietf-netconf-transaction-id;
+  prefix txid;
 
   import ietf-netconf {
     prefix nc;
@@ -587,7 +625,7 @@ module ietf-netconf-transaction-id {
   description
     "NETCONF Transaction ID aware operations for NMDA.
 
-     Copyright (c) 2020 IETF Trust and the persons identified as
+     Copyright (c) 2021 IETF Trust and the persons identified as
      the document authors.  All rights reserved.
 
      Redistribution and use in source and binary forms, with or
@@ -600,48 +638,34 @@ module ietf-netconf-transaction-id {
      This version of this YANG module is part of RFC XXXX; see
      the RFC itself for full legal notices.";
 
-  revision 2020-10-01 {
+  revision 2021-11-01 {
     description
       "Initial revision";
     reference
       "RFC XXXX: Xxxxxxxxx";
   }
 
-  typedef transaction-id-t {
-    type string;
-    description 
-      "Unique value representing a specific transaction";
-  }
-
-  grouping transaction-id-grouping {
-    leaf transaction-id {
-      type transaction-id-t;
-      description
-        "Transaction-id value selected by the client.  This string
-         should be chosen to give a high probability to be unique on
-         the server.";
+  typedef etag-t {
+    type string {
+      pattern ".* .*" {
+        modifier invert-match;
+      }
+      pattern ".*\".*" {
+        modifier invert-match;
+      }
+      pattern ".*\\.*" {
+        modifier invert-match;
+      }
     }
-    description
-      "Grouping for transaction-id, to be augmented into rpcs
-       that modify configuration data stores.";
+    description 
+      "Unique Entity-tag value representing a specific transaction.
+       Could be any string that does not contain spaces, double 
+       quotes or backslash.  The values \"?\" and \"=\" have special
+       meaning.";
   }
 
-  augment /nc:edit-config/nc:input {
-    uses transaction-id-grouping;
-    description
-      "Injects the transaction-id leaf into the edit-config
-      operation";
-  }
-
-  augment /ncds:edit-data/ncds:input {
-    uses transaction-id-grouping;
-    description
-      "Injects the transaction-id leaf into the edit-data
-      operation";
-  }
-
-  sx:structure entag-value-mismatch-error-info {
-    container entag-value-mismatch-error-info {
+  sx:structure etag-value-mismatch-error-info {
+    container etag-value-mismatch-error-info {
       description
          "This error is returned by a NETCONF server when a client
           sends a configuration change request, with the additonal
@@ -653,12 +677,12 @@ module ietf-netconf-transaction-id {
         type instance-identifier;
         description
           "Indicates the YANG path to the element with a mismatching
-           entag value.";
+           etag value.";
       }
-      leaf mismatch-entag-value {
-        type transaction-id-t;
+      leaf mismatch-etag-value {
+        type etag-t;
         description
-          "Indicates server's value of the entag attribute for one
+          "Indicates server's value of the etag attribute for one
            mismatching element.";
       }
     }
@@ -676,9 +700,36 @@ TODO Security
 This document has no IANA actions.
 
 
+# Changes
+
+## Major changes in -01 since -00
+
+* Updated the text on numerous points in order to answer questions 
+that appeared on the mailing list.
+
+* Renamed entag attribute to etag and namespace to txid. 
+Harmonized/slightly adjusted value space with RFC7232 and RFC8040.
+
+* Removed all text discussing etag values provided by the client 
+(although this is still an interesting idea, if you ask the author)
+
+* Clarified the etag attribute mechanism, especially when it comes to
+matching against non-versioned elements, its cascading upwards in the 
+tree and secondary effects from when- and choice-statements.
+
+* Added a mechanism for returning the server assigned etag value in
+get-config and get-data.
+
+* Removed many comments about open questions.
+
+
+
+
 --- back
 
 # Acknowledgments
 {:numbered="false"}
 
-TODO acknowledge.
+The author wishes to thank Benoît Claise for making this work happen,
+and the following individuals, who all provided helpful comments:
+Per Andersson, Kent Watsen, Andy Bierman, Robert Wilton, Qiufang Ma.
