@@ -86,7 +86,8 @@ when, and only when, they appear in all capitals, as shown here.
 # NETCONF Extension
 
 This document describes a NETCONF extension which modifies the 
-behavior of get-config, get-data, edit-config and edit-data such
+behavior of get-config, get-data, edit-config, edit-data,
+discard-changes, copy-config, delete-config and commit such
 that clients are able to conditionally retrieve and update the 
 configuration in a NETCONF server.  NETCONF servers that support 
 this extension MUST announce the capability 
@@ -293,7 +294,9 @@ element.
 attribute value is different than the server's etag value for this
 element.  In this case the server MUST return the contents as it would 
 otherwise have done, adding the etag attributes of all child versioned 
-elements to the response.
+elements to the response.  In case the client has specified etag 
+attributes for some child elements, then these cases MUST be 
+re-evaluated for those elements.
 
 * The element is a versioned element, and the client specified etag 
 attribute value matches the server's etag value.  In this case the 
@@ -592,6 +595,65 @@ send:
 </rpc-reply>
 ~~~
 
+# Other NETCONF Operations
+
+## discard-changes
+
+The discard-changes operation resets the candidate datastore to the 
+contents of the running datastore.  The server MUST ensure the etag 
+attributes in the candidate datastore get the same values as in 
+the running datastore when this operation runs.
+
+## copy-config
+
+The copy-config operation can be used to copy contents between 
+datastores.  The server MUST ensure the etag attributes retain the 
+same values as in the soruce datastore.
+
+If copy-config is used to copy from a file, URL or other source that 
+is not a datastore, the server MUST ensure etags are given new values.
+
+## delete-config
+
+The server MUST ensure the datastore etag is given a new value.
+
+## commit
+
+At commit, with regards to the etag values, the server MUST treat the 
+contents of the candidate datastore as if any etag attributes provided
+by the client were provided in a single edit-config towards the 
+running datastore.  If the transaction is rejected due to etag 
+mismatch, the error message specified in section 
+[Conditional Configuration Update](#conditional-configuration-update)
+MUST be used.
+
+The client MAY request that the new etag value is returned as an 
+attribute on the ok response for a successful commit.  The client 
+requests this by adding with-etag to the commit operation.
+
+For example, a client might send:
+
+~~~
+<rpc message-id="1"
+    xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+    xmlns:ietf-netconf-txid=
+      "urn:ietf:params:xml:ns:yang:ietf-netconf-txid"
+  <commit>
+    <ietf-netconf-txid:with-etag/>
+  </commit>
+</rpc>
+~~~
+
+Assuming the server accepted the transaction, it might respond:
+
+~~~
+<rpc-reply message-id="1"
+    xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
+    xmlns:txid="urn:ietf:params:xml:ns:netconf:txid:1.0">
+  <ok txid:etag="ghi55550101"/>
+</rpc-reply>
+~~~
+
 # YANG Modules
 
 ~~~ yang
@@ -681,6 +743,13 @@ module ietf-netconf-txid {
     description
       "Injects the with-etag presence container into the 
       edit-config operation";
+  }
+
+  augment /nc:commit/nc:input {
+    uses transaction-id-grouping;
+    description
+      "Injects the with-etag presence container into the 
+      commit operation";
   }
 
   augment /ncds:edit-data/ncds:input {
@@ -785,9 +854,13 @@ tree and secondary effects from when- and choice-statements.
 * Added a mechanism for returning the server assigned etag value in
 get-config and get-data.
 
+* Added section describing how the NETCONF discard-changes, 
+copy-config, delete-config and commit operations work with respect to 
+etags.
+
 * Added IANA Considerations section.
 
-* Removed many comments about open questions.
+* Removed all comments about open questions.
 
 --- back
 
