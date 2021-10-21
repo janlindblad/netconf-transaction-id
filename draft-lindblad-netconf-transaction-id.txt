@@ -4,8 +4,8 @@
 
 NETCONF                                                      J. Lindblad
 Internet-Draft                                             Cisco Systems
-Intended status: Standards Track                         19 October 2021
-Expires: 22 April 2022
+Intended status: Standards Track                         21 October 2021
+Expires: 24 April 2022
 
 
                   Transaction ID Mechanism for NETCONF
@@ -47,7 +47,7 @@ Status of This Memo
    time.  It is inappropriate to use Internet-Drafts as reference
    material or to cite them other than as "work in progress."
 
-   This Internet-Draft will expire on 22 April 2022.
+   This Internet-Draft will expire on 24 April 2022.
 
 Copyright Notice
 
@@ -75,12 +75,17 @@ Table of Contents
      4.2.  Configuration Response Pruning
    5.  Configuration Update
      5.1.  Conditional Configuration Update
-   6.  YANG Modules
-   7.  Security Considerations
-   8.  IANA Considerations
-   9.  Changes
-     9.1.  Major changes in -01 since -00
-   10. Normative References
+   6.  Other NETCONF Operations
+     6.1.  discard-changes
+     6.2.  copy-config
+     6.3.  delete-config
+     6.4.  commit
+   7.  YANG Modules
+   8.  Security Considerations
+   9.  IANA Considerations
+   10. Changes
+     10.1.  Major changes in -01 since -00
+   11. Normative References
    Acknowledgments
    Author's Address
 
@@ -129,10 +134,11 @@ Table of Contents
 3.  NETCONF Extension
 
    This document describes a NETCONF extension which modifies the
-   behavior of get-config, get-data, edit-config and edit-data such that
-   clients are able to conditionally retrieve and update the
-   configuration in a NETCONF server.  NETCONF servers that support this
-   extension MUST announce the capability
+   behavior of get-config, get-data, edit-config, edit-data, discard-
+   changes, copy-config, delete-config and commit such that clients are
+   able to conditionally retrieve and update the configuration in a
+   NETCONF server.  NETCONF servers that support this extension MUST
+   announce the capability
    "urn:ietf:params:netconf:capability:txid:1.0".
 
 3.1.  ETag attribute
@@ -327,7 +333,9 @@ Table of Contents
       attribute value is different than the server's etag value for this
       element.  In this case the server MUST return the contents as it
       would otherwise have done, adding the etag attributes of all child
-      versioned elements to the response.
+      versioned elements to the response.  In case the client has
+      specified etag attributes for some child elements, then these
+      cases MUST be re-evaluated for those elements.
 
    *  The element is a versioned element, and the client specified etag
       attribute value matches the server's etag value.  In this case the
@@ -607,7 +615,62 @@ Table of Contents
      </rpc-error>
    </rpc-reply>
 
-6.  YANG Modules
+6.  Other NETCONF Operations
+
+6.1.  discard-changes
+
+   The discard-changes operation resets the candidate datastore to the
+   contents of the running datastore.  The server MUST ensure the etag
+   attributes in the candidate datastore get the same values as in the
+   running datastore when this operation runs.
+
+6.2.  copy-config
+
+   The copy-config operation can be used to copy contents between
+   datastores.  The server MUST ensure the etag attributes retain the
+   same values as in the soruce datastore.
+
+   If copy-config is used to copy from a file, URL or other source that
+   is not a datastore, the server MUST ensure etags are given new
+   values.
+
+6.3.  delete-config
+
+   The server MUST ensure the datastore etag is given a new value.
+
+6.4.  commit
+
+   At commit, with regards to the etag values, the server MUST treat the
+   contents of the candidate datastore as if any etag attributes
+   provided by the client were provided in a single edit-config towards
+   the running datastore.  If the transaction is rejected due to etag
+   mismatch, the error message specified in section Conditional
+   Configuration Update (Section 5.1) MUST be used.
+
+   The client MAY request that the new etag value is returned as an
+   attribute on the ok response for a successful commit.  The client
+   requests this by adding with-etag to the commit operation.
+
+   For example, a client might send:
+
+   <rpc message-id="1"
+       xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+       xmlns:ietf-netconf-txid=
+         "urn:ietf:params:xml:ns:yang:ietf-netconf-txid"
+     <commit>
+       <ietf-netconf-txid:with-etag/>
+     </commit>
+   </rpc>
+
+   Assuming the server accepted the transaction, it might respond:
+
+   <rpc-reply message-id="1"
+       xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"
+       xmlns:txid="urn:ietf:params:xml:ns:netconf:txid:1.0">
+     <ok txid:etag="ghi55550101"/>
+   </rpc-reply>
+
+7.  YANG Modules
 
    module ietf-netconf-txid {
      yang-version 1.1;
@@ -697,6 +760,13 @@ Table of Contents
          edit-config operation";
      }
 
+     augment /nc:commit/nc:input {
+       uses transaction-id-grouping;
+       description
+         "Injects the with-etag presence container into the
+         commit operation";
+     }
+
      augment /ncds:edit-data/ncds:input {
        uses transaction-id-grouping;
        description
@@ -728,11 +798,11 @@ Table of Contents
      }
    }
 
-7.  Security Considerations
+8.  Security Considerations
 
    TODO Security
 
-8.  IANA Considerations
+9.  IANA Considerations
 
    This document registers the following capability identifier URN in
    the 'Network Configuration Protocol (NETCONF) Capability URNs'
@@ -763,9 +833,9 @@ Table of Contents
 
      RFC: XXXX
 
-9.  Changes
+10.  Changes
 
-9.1.  Major changes in -01 since -00
+10.1.  Major changes in -01 since -00
 
    *  Updated the text on numerous points in order to answer questions
       that appeared on the mailing list.
@@ -794,11 +864,15 @@ Table of Contents
    *  Added a mechanism for returning the server assigned etag value in
       get-config and get-data.
 
+   *  Added section describing how the NETCONF discard-changes, copy-
+      config, delete-config and commit operations work with respect to
+      etags.
+
    *  Added IANA Considerations section.
 
-   *  Removed many comments about open questions.
+   *  Removed all comments about open questions.
 
-10.  Normative References
+11.  Normative References
 
    [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
               Requirement Levels", BCP 14, RFC 2119,
