@@ -60,7 +60,7 @@ Furthermore, even if the configuration is reported to be unchanged,
 that will not guarantee that the configuration remains unchanged 
 when a client sends a subsequent change request, a few moments later.
 
-Evidence of a transaction-id feature being demanded by clients is that 
+Evidence of a transaction id feature being demanded by clients is that 
 several server implementors have built proprietary and mutually 
 incompatible mechanisms for obtaining a transaction id from a NETCONF 
 server.
@@ -83,7 +83,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
 document are to be interpreted as described in BCP 14 {{RFC2119}} {{!RFC8174}}
 when, and only when, they appear in all capitals, as shown here.
 
-# NETCONF Extension
+# NETCONF Transaction id Extension
 
 This document describes a NETCONF extension which modifies the 
 behavior of get-config, get-data, edit-config, edit-data,
@@ -93,49 +93,161 @@ configuration in a NETCONF server.  NETCONF servers that support
 this extension MUST announce the capability 
 "urn:ietf:params:netconf:capability:txid:1.0".
 
+Several low level mechanisms could be defined to fulfill the 
+requirements for efficient client-server transaction id 
+synchronization.  This document defines only one mechanism, but 
+additional mechanisms could be added in future versions of this 
+document, or in separate documents.
+
+The common use cases for such mecahnisms are briefly discussed here.
+
+Initial configuration retrieval
+: When the client initially connects to a server, it may be interested 
+to acquire a current view of (parts of) the server's configuration.  
+In order to be able to efficiently detect changes later, it may also 
+be interested to store meta level transaction id information about 
+subtrees of the configuration.
+
+Subsequent configuration retrieval
+: When a client needs to reread (parts of) the server's configuration, 
+it may be interested to leverage the transaction id meta data it has 
+stored by requesting the server to prune the response so that it does 
+not repeat configuration data that the client is already aware of.
+
+Configuration update with transaction id return
+: When a client issues a transaction towards a server, it may be 
+interested to also learn the new transaction id meta data the server 
+has stored for the updated parts of the configuration.
+
+Configuration update with transaction id specification
+: When a client issues a transaction towards a server, it may be 
+interested to also specify the new transaction id meta data that the 
+server stores for the updated parts of the configuration.
+
+Conditional configuration update
+: When a client issues a transaction towards a server, it may specify 
+transaction id data for the transaction in order to allow the server to 
+verify that the client is up to date with any changes in the parts of 
+the configuration that it is concerned with.  If the transaction id 
+information in the server is different than the client expected, the 
+server rejects the transaction with a specific error message.
+
+## General Principles
+
+All transaction id mechanisms SHALL maintain a transaction id value for 
+each configuration datastore supported by the server.  Some transaction 
+id mechanisms will also maintain transaction id values for elements 
+deeper in the YANG data tree.  The elements for which the server 
+maintains transaction ids are collectively referred to as the 
+"versioned elements".
+
+The server returning transaction id values for the versioned elements 
+MUST ensure the transaction id values are changed every time there has 
+been a configuration change at or below the element associated with 
+the value.  This means any update of a config true element will result 
+in a new transaction id value for all ancestor versioned elements, up 
+to and including the datastore root itself.
+
+This also means a server MUST update the transaction id value for any 
+elements that change as a result of a configuration change, regardless 
+of source, even if the changed elements are not explicitly part 
+of the change payload. An example of this is dependent data under 
+YANG [RFC 7950](https://tools.ietf.org/html/rfc7950) when- or 
+choice-statements.
+
+The server MUST NOT change the transaction id value of a versioned 
+element unless a child element of that element has been changed.  The 
+server MUST NOT change any transaction id values due to changes in 
+config false data.
+
+## Conditional Transactions
+
+Conditional transactions are useful when a client is interested to
+make a configuration change, being sure that the server configuration
+has not changed since the client last inspected it.
+
+By supplying the latest transaction id values known to the client
+in its change requests (edit-config etc.), it can request the server 
+to reject the transaction in case any relevant changes have occurred 
+at the server that the client is not yet aware of.
+
+This allows a client to reliably compute and send confiuguration 
+changes to a server without either acquiring a global datastore lock 
+for a potentially extended period of time, or risk that a change 
+from another client disrupts the intent in the time window between a 
+read (get-config etc.) and write (edit-config etc.) operation.
+
+If the server rejects the transaction because the configuration 
+transaction id value differs from the client's expectation, the 
+server MUST return an rpc-error with the following values:
+
+~~~
+   error-tag:      operation-failed
+   error-type:     protocol
+   error-severity: error
+~~~
+
+Additionally, the error-info tag SHOULD contain an sx:structure
+containing relevant details about the mismatching transaction ids.
+
+## Other NETCONF Operations
+
+discard-changes
+: The discard-changes operation resets the candidate datastore to the 
+contents of the running datastore.  The server MUST ensure the 
+transaction id values in the candidate datastore get the same values 
+as in the running datastore when this operation runs.
+
+copy-config
+: The copy-config operation can be used to copy contents between 
+datastores.  The server MUST ensure the transaction id values retain 
+the same values as in the soruce datastore.
+: If copy-config is used to copy from a file, URL or other source that 
+is not a datastore, the server MUST ensure the transaction id values 
+are changed.
+
+delete-config
+: The server MUST ensure the datastore transaction id value is changed.
+
+commit
+: At commit, with regards to the transaction id values, the server MUST 
+treat the contents of the candidate datastore as if any transaction id 
+value provided by the client when updating the candidate was provided 
+in a single edit-config towards the running datastore.  If the 
+transaction is rejected due to transaction id value mismatch, 
+an rpc-error as described in section
+[Conditional Transactions](#conditional-transactions) MUST be sent.
+
+# ETag Transaction id Mechanism
+
 ## ETag attribute
 
-Central to the configuration retrieval and update mechanisms described 
-in the following sections is a meta data XML attribute called "etag".  
+Central to the ETag configuration retrieval and update mechanism 
+described in the following sections is a meta data XML attribute 
+called "etag".  The etag attribute is defined in the namespace 
+"urn:ietf:params:xml:ns:netconf:txid:1.0".
+
 Servers MUST maintain a top-level etag value for each configuration 
 datastore they implement.  Servers SHOULD maintain etag values for 
 YANG containers that hold configuration for different subsystems.  
 Servers MAY maintain etag values for any YANG container or list 
 element they implement. 
 
-The etag attribute values are opaque UTF-8 strings chosen freely by 
-the server, except the etag string must not contain space, backslash 
+The etag attribute values are opaque UTF-8 strings chosen freely, 
+except that the etag string must not contain space, backslash 
 or double quotes. The point of this restriction is to make it easy to 
 reuse implementations that adhere to section 2.3.1 in 
 [RFC 7232](https://tools.ietf.org/html/rfc7232).  The probability 
 SHOULD be made very low that an etag value that has been used 
 historically by a server is used again by that server.
 
-The etag attribute is defined in the namespace 
-"urn:ietf:params:xml:ns:netconf:txid:1.0".
-
-## ETag value changes
-
-When a NETCONF client retrieves the configuration from a NETCONF 
-server that implements this specification, it MAY request that the
-configuration is entity tagged.  The entity tags are attributes 
-that the server adds to some of the retrieved configuration elements.  
-These elements are collectively called the "versioned elements".
-
-The server returning the entity-tag (etag) attributes for the 
-versioned elements ensures the etag values are changed every time 
-there has been a configuration change at or below the element bearing 
-the attribute.  This means any update of a config true element will 
-result in a new etag value for all ancestor versioned elements, up to 
-and including the datastore root itself.  The detailed rules for when 
-to update the etag value are described in section 
-[Configuration Update](#configuration-update).
-
-These rules are chosen to be consistent with the ETag mechanism in 
+The detailed rules for when to update the etag value are described in 
+section [Configuration Update](#configuration-update).  These rules 
+are chosen to be consistent with the ETag mechanism in 
 RESTCONF, [RFC 8040](https://tools.ietf.org/html/rfc8040), 
 specifically sections 3.4.1.2, 3.4.1.3 and 3.5.2.
 
-# Configuration Retreival
+## Configuration Retreival
 
 Clients MAY request the server to return etag attribute values in the 
 response by adding one or more etag attributes in get-config or 
@@ -143,13 +255,15 @@ get-data requests.
 
 The etag attribute may be added directly on the get-config or get-data 
 requests, in which case it pertains to the entire datastore.  A client
-may also add etag attributes to zero or more individual elements in 
-the get-config or get-data request, in which case it pertains to the
+MAY also add etag attributes to zero or more individual elements in 
+the get-config or get-data filter, in which case it pertains to the
 subtree rooted at that element.
 
 For each element that the client requests etag attributes, the server 
 MUST return etags for all versioned elements at or below that point 
-that are part of the server's respone.
+that are part of the server's respone.  ETags are returned as 
+attributes on the element they pertain to.  The datastore root etag 
+value is returned on the top-level data tag in the response.
 
 If the client is requesting an etag value for an element that is not 
 among the server's versioned elements, then the server MUST return the 
@@ -157,7 +271,7 @@ etag attribute on the closest ancestor that is a versioned element,
 and all children of that ancestor.  The datastore root is always a 
 versioned element.
 
-## Initial Configuration Response
+### Initial Configuration Response
 
 When the client adds etag attributes to a get-config or get-data 
 request, it should specify the last known etag values it has seen for 
@@ -254,14 +368,14 @@ to the request above might look like:
 </rpc>
 ~~~
 
-## Configuration Response Pruning
+### Configuration Response Pruning
 
 A NETCONF client that already knows some etag values MAY request that
 the configuration retrieval request is pruned with respect to the 
 client's prior knowledge.
 
 To retrieve only changes for "ietf-interfaces" that do not have the 
-last known transaction-id "abc12345678", but include the entire 
+last known etag value "abc12345678", but include the entire 
 configuration for "nacm", regardless of etags, a client might send:
 
 ~~~
@@ -304,7 +418,7 @@ server MUST return the element decorated with an etag attribute with
 the value "=", and child elements pruned.
 
 For list elements, pruning child elements means that key elements 
-MUST be included in the response, and other child element MUST NOT be 
+MUST be included in the response, and other child elements MUST NOT be 
 included.  For containers, child elements MUST NOT be included.
 
 For example, assuming the NETCONF server configuration is the same as 
@@ -341,7 +455,7 @@ above might look like:
 </rpc>
 ~~~
 
-# Configuration Update
+## Configuration Update
 
 Whenever the configuration on a server changes for any reason, the 
 server MUST update the etag value for all versioned elements that 
@@ -358,13 +472,6 @@ MUST NOT change any etag values due to changes in config false data.
 
 How the server selects a new etag value to use for the changed
 elements is described in section [ETag attribute](#etag-attribute).
-
-The server MUST also update the etag value for elements that change as 
-a result of the edit-config or edit-data, but are not explicitly part 
-of the edit-config or edit-data payload, such as dependent data under 
-YANG [RFC 7950](https://tools.ietf.org/html/rfc7950) when- or 
-choice-statements as if those changes had been explicitly part of the 
-client's request payload.
 
 For example, if a client wishes to update the interface description
 for interface "GigabitEthernet-0/1" to "Downward Interface", it might 
@@ -461,22 +568,7 @@ interface "GigabitEthernet-0/0", a subsequent get-config request for
 </rpc>
 ~~~
 
-## Conditional Configuration Update
-
-Conditional transactions are useful when a client is interested to
-make a configuration change, being sure that the server configuration
-has not changed since the client last inspected it.
-
-By supplying the latest etag values known to the client
-in its change requests (edit-config etc.), it can request the server 
-to reject the transaction in case any relevant changes have occurred 
-at the server that the client is not yet aware of.
-
-This allows a client to reliably compute and send confiuguration 
-changes to a server without either acquiring a global datastore lock 
-for a potentially extended period of time, or risk that a change 
-from another client disrupts the intent in the time window between a 
-read (get-config etc.) and write (edit-config etc.) operation.
+### Conditional Configuration Update
 
 When a NETCONF client sends an edit-config or edit-data request to a
 NETCONF server that implements this specification, the client MAY 
@@ -484,17 +576,9 @@ specify expected etag values on the versioned elements touched by the
 transaction.
 
 If such an etag value differs from the etag value stored on the 
-server, the server MUST reject the transaction.
-
-If the server rejects the transaction because the configuration etag
-value differs from the client's expectation, ther server MUST return
-an rpc-error with the following values:
-
-~~~
-   error-tag:      operation-failed
-   error-type:     protocol
-   error-severity: error
-~~~
+server, the server MUST reject the transaction and return an rpc-error 
+as specified in section 
+[Conditional Transactions](#conditional-transactions). 
 
 Additionally, the error-info tag MUST contain an sx:structure
 etag-value-mismatch-error-info as defined in the module 
@@ -595,37 +679,32 @@ send:
 </rpc-reply>
 ~~~
 
-# Other NETCONF Operations
+## ETags with Other NETCONF Operations
 
-## discard-changes
+The following NETCONF Operations also need some special considerations.
 
-The discard-changes operation resets the candidate datastore to the 
-contents of the running datastore.  The server MUST ensure the etag 
-attributes in the candidate datastore get the same values as in 
-the running datastore when this operation runs.
+discard-changes
+: The server MUST ensure the etag attributes in the candidate 
+datastore get the same values as in the running datastore when this 
+operation runs.
 
-## copy-config
+copy-config
+: The server MUST ensure the etag attributes retain the same values as 
+in the soruce datastore.
+: If copy-config is used to copy from a source that is not a datastore, 
+the server MUST ensure etags are given new values.
 
-The copy-config operation can be used to copy contents between 
-datastores.  The server MUST ensure the etag attributes retain the 
-same values as in the soruce datastore.
+delete-config
+: The server MUST ensure the datastore etag is given a new value.
 
-If copy-config is used to copy from a file, URL or other source that 
-is not a datastore, the server MUST ensure etags are given new values.
-
-## delete-config
-
-The server MUST ensure the datastore etag is given a new value.
-
-## commit
-
-At commit, with regards to the etag values, the server MUST treat the 
+commit
+: At commit, with regards to the etag values, the server MUST treat the 
 contents of the candidate datastore as if any etag attributes provided
 by the client were provided in a single edit-config towards the 
-running datastore.  If the transaction is rejected due to etag 
-mismatch, the error message specified in section 
+running datastore.  If the commit is rejected due to etag mismatch, 
+the rpc-error message specified in section 
 [Conditional Configuration Update](#conditional-configuration-update)
-MUST be used.
+MUST be sent.
 
 The client MAY request that the new etag value is returned as an 
 attribute on the ok response for a successful commit.  The client 
@@ -734,28 +813,28 @@ module ietf-netconf-txid {
          txid:etag transaction id in the rpc-reply";
     }
     description
-      "Grouping for with-etag, to be augmented into rpcs that 
-       modify configuration data stores.";
+      "Grouping for transaction id mechanisms, to be augmented into 
+       rpcs that modify configuration data stores.";
   }
 
   augment /nc:edit-config/nc:input {
     uses transaction-id-grouping;
     description
-      "Injects the with-etag presence container into the 
+      "Injects the transaction id mechanisms into the 
       edit-config operation";
   }
 
   augment /nc:commit/nc:input {
     uses transaction-id-grouping;
     description
-      "Injects the with-etag presence container into the 
+      "Injects the transaction id mechanisms into the 
       commit operation";
   }
 
   augment /ncds:edit-data/ncds:input {
     uses transaction-id-grouping;
     description
-      "Injects the with-etag presence container into the 
+      "Injects the transaction id mechanisms into the 
       edit-data operation";
 
   sx:structure etag-value-mismatch-error-info {
@@ -832,6 +911,9 @@ registry, defined in [RFC 6020](https://tools.ietf.org/html/rfc6020).
 
 * Updated the text on numerous points in order to answer questions 
 that appeared on the mailing list.
+
+* Changed the document structure into a general transaction id part 
+and one etag specific part.
 
 * Renamed entag attribute to etag, prefix to txid, namespace to
 urn:ietf:params:xml:ns:yang:ietf-netconf-txid.
